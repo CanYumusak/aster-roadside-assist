@@ -48,7 +48,7 @@ export function SmsPreview({
     );
   const safetySummary =
     claim?.intakeFacts.safetySummary ??
-    "Safety verbally checked";
+    (cancelled ? "Safety not confirmed" : "Safety not captured");
   const authSummary = formatAuthSummary(claim);
 
   return (

@@ -23,7 +23,10 @@ export type RealtimeVoiceSession = {
 export type RealtimeVoiceDoneDisposition = "complete" | "human_callback";
 
 export type RealtimeVoiceCallbacks = {
-  onDone?: (disposition: RealtimeVoiceDoneDisposition) => void | Promise<void>;
+  onDone?: (
+    disposition: RealtimeVoiceDoneDisposition,
+    reason?: string,
+  ) => void | Promise<void>;
 };
 
 export async function startRealtimeVoiceSession(
@@ -165,9 +168,11 @@ type CompletionState = {
   finalMessageIssued: boolean;
   finalMessageSpoken: boolean;
   spokenDisposition?: RealtimeVoiceDoneDisposition;
+  spokenReason?: string;
   lastAssistantTranscript?: string;
   pendingClose?: {
     disposition: RealtimeVoiceDoneDisposition;
+    reason?: string;
     doneNotified: boolean;
   };
   closeTimer?: number;
@@ -257,6 +262,8 @@ async function handleRealtimeServerEvent(
     } else if (name === "end_call") {
       const disposition =
         args.disposition === "human_callback" ? "human_callback" : "complete";
+      const callbackReason = nonEmptyString(args.reason);
+      const safetySummary = nonEmptyString(args.safetySummary);
       if (disposition === "complete") {
         const nextStep = await getBackendNextStep(context.caseRef);
         if (nextStep.allowedAction !== "coverage_decision") {
@@ -302,11 +309,18 @@ async function handleRealtimeServerEvent(
           return;
         }
       }
-      output = { ended: true, disposition };
+      if (disposition === "human_callback" && safetySummary) {
+        await updateBackendFacts(context.caseRef, {
+          safetyKnown: false,
+          safetySummary,
+        });
+      }
+      output = { ended: true, disposition, reason: callbackReason };
       logRealtimeTool("output", { name, callId, output });
       sendFunctionOutput(dataChannel, callId, output);
       completionState.pendingClose = {
         disposition,
+        reason: callbackReason,
         doneNotified: false,
       };
       completionState.closeTimer = window.setTimeout(() => {
@@ -367,6 +381,7 @@ function maybeCloseAfterSpokenFinal(
 
   completionState.pendingClose ??= {
     disposition: completionState.spokenDisposition,
+    reason: completionState.spokenReason,
     doneNotified: false,
   };
 
@@ -402,7 +417,7 @@ function finishRealtimeCall(
     completionState.closeTimer = undefined;
   }
   closeSession();
-  void callbacks.onDone?.(pendingClose.disposition);
+  void callbacks.onDone?.(pendingClose.disposition, pendingClose.reason);
 }
 
 function firstNonEmpty(...values: Array<string | undefined>) {
@@ -437,6 +452,17 @@ function captureAssistantTranscript(
   ) {
     completionState.finalMessageSpoken = true;
     completionState.spokenDisposition = "human_callback";
+    completionState.spokenReason = "AI agent routed the case to a human callback.";
+  }
+  if (
+    normalized.includes("safe place") &&
+    normalized.includes("call") &&
+    normalized.includes("back") &&
+    (normalized.includes("traffic") || normalized.includes("emergency services"))
+  ) {
+    completionState.finalMessageSpoken = true;
+    completionState.spokenDisposition = "human_callback";
+    completionState.spokenReason = "Caller was not in a safe place for roadside intake.";
   }
 }
 

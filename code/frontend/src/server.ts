@@ -222,6 +222,16 @@ async function createRealtimeCall(request: Request, env: unknown): Promise<Respo
                 description:
                   "Use complete for normal completed intake, human_callback when a specialist callback is required.",
               },
+              reason: {
+                type: "string",
+                description:
+                  "Short internal reason for human callback or safety cancellation.",
+              },
+              safetySummary: {
+                type: "string",
+                description:
+                  "What the caller said about safety when the call ended before normal intake.",
+              },
             },
             required: ["disposition"],
             additionalProperties: false,
@@ -319,7 +329,9 @@ function buildVoiceInstructions(context?: RealtimeVoiceServerContext): string {
     "Do not call end_call until vehicle, location, and incident have each been recorded with record_intake_step and the latest tool output says allowedAction is coverage_decision.",
     "Start by greeting the caller and confirming this is Aster Roadside. Your first question must be: is everyone safe and away from traffic or immediate danger?",
     "Do not mention the known phone number, PIN, vehicle, policy, or coverage until after the caller has answered the safety question.",
-    "After the caller answers the first safety question, continue immediately. Do not call a tool just to record safety. If they are not safe, report injury, smoke, fire, flooding, EV battery danger, or live-traffic danger, say a roadside specialist will call back as soon as one is available and then call end_call with disposition human_callback.",
+    "After the caller answers the first safety question, continue immediately. Do not call a tool just to record safety when they are safe.",
+    "If the caller is in the road, in live traffic, not away from traffic, or otherwise not safe, do not continue intake and do not say a specialist will call back. Say exactly: Please get to a safe place away from traffic now. If anyone is injured or you cannot get safe, call emergency services immediately. Once you are safe, call Aster Roadside back and we will continue. I am ending this call so you can focus on safety. Then call end_call with disposition human_callback, reason 'Caller was not in a safe place for roadside intake.', and safetySummary based only on what the caller said.",
+    "If the caller reports injury, smoke, fire, flooding, or EV battery danger, say exactly: Please move away from the vehicle if you can do so safely and call emergency services now. Once you are safe, call Aster Roadside back and we will continue. I am ending this call so you can focus on safety. Then call end_call with disposition human_callback, reason 'Caller reported immediate safety risk.', and safetySummary based only on what the caller said.",
     customer
       ? `After the caller says they are safe, say only that their phone number matches a policyholder record. Do not say the policyholder name, birthdate, policy tier, vehicle, or any other policyholder details yet. Ask for digits ${pinDigits} of their roadside PIN. Once the caller gives the two digits, call verify_known_pin silently with the two numeric answer values as firstDigit and secondDigit, not the requested positions. Example: if you ask for digits 3 and 6 and the caller gives all six digits as 158602, call the tool with firstDigit=8 and secondDigit=2. Do not speak while waiting for verify_known_pin to return. Do not say verified until the tool returns verified=true. If verified=false and humanCallbackRequired is false, say exactly: That PIN did not work, let's try once more. Please give me digits ${pinDigits} of your roadside PIN. If verified=false and humanCallbackRequired is true, say: That PIN did not work, so I will pass this to a roadside specialist. They will call you back as soon as one is available. Then call end_call with disposition human_callback. If verified=true, use customerDetails and vehicleOptions from the tool output, then continue with the required vehicle, location, and incident sequence; do not ask the same safety question again.`
       : `The phone number does not match a customer. Do not offer policy number, registration, postcode, or other lookup options in this prototype. Ask only for full name, date of birth, and digits ${unknownPinDigits} of their roadside PIN, then rely on the backend tool result for retry or callback. Treat this as elevated risk.`,
@@ -334,7 +346,7 @@ function buildVoiceInstructions(context?: RealtimeVoiceServerContext): string {
     scenario
       ? `Suggested demo scenario: ${scenario.title}. The presenter may say incident: "${scenario.incidentPhrase}", safety: "${scenario.safetyPhrase}", location: "${scenario.locationPhrase}". Expected prototype outcome: ${scenario.coverage}; action shown later in UI: ${scenario.action}; provider: ${scenario.provider}; ETA ${scenario.etaMinutes} minutes.`
       : "If no scenario is provided, gather incident type, safety, location, and vehicle details.",
-    "If the caller asks for a human, says they are not the policyholder, reports injury, immediate danger, or uncertain identity, say: I will pass this to a roadside specialist. They will call you back as soon as one is available, and I will send a text confirmation now. Then call end_call with disposition human_callback.",
+    "If the caller asks for a human, says they are not the policyholder, or has uncertain identity, say: I will pass this to a roadside specialist. They will call you back as soon as one is available, and I will send a text confirmation now. Then call end_call with disposition human_callback and a short reason.",
     "For ordinary completed intakes, the final caller-facing sentence must be: Thanks, I have what I need. I will check the cover now and send you a text with the next best action, including whether we are sending a mobile repair truck or arranging a tow. Then call end_call with disposition complete.",
     context?.caseRef ? `Demo case reference: ${context.caseRef}.` : "",
     context?.callerPhone ? `Caller phone number: ${context.callerPhone}.` : "",

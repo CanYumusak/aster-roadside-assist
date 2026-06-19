@@ -168,8 +168,8 @@ function AsterApp() {
         caseRef: claimForSession?.id ?? caseRef,
         authRisk,
       }, {
-        onDone: (disposition) => {
-          void finishCallFromAgent(disposition, claimForSession?.id);
+        onDone: (disposition, reason) => {
+          void finishCallFromAgent(disposition, claimForSession?.id, reason);
         },
       });
       setVoiceStatus("connected");
@@ -237,6 +237,7 @@ function AsterApp() {
   async function finishCallFromAgent(
     disposition: RealtimeVoiceDoneDisposition,
     claimId?: string,
+    reason?: string,
   ) {
     realtimeSessionRef.current = null;
     if (claimId) {
@@ -245,7 +246,7 @@ function AsterApp() {
           disposition === "human_callback"
             ? await humanCallbackBackendClaim(
                 claimId,
-                "AI agent routed the case to a human callback.",
+                reason ?? "AI agent routed the case to a human callback.",
               )
             : await finalizeBackendClaim(claimId),
         );

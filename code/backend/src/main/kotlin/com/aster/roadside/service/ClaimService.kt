@@ -487,7 +487,7 @@ class ClaimService(
                         escalationRequired = true,
                     ),
                 assistanceAction = null,
-                smsPreview = callbackSms(existing.id),
+                smsPreview = if (isSafetyCancellation(reason)) safetyCallbackSms(existing.id) else callbackSms(existing.id),
                 updatedAt = Instant.now(),
             )
         claims[existing.id] = completed
@@ -641,6 +641,14 @@ class ClaimService(
 
     private fun callbackSms(caseRef: String) =
         "Aster Roadside: Your case has been sent to a roadside specialist. They will call you back as soon as one is available. Case ref: $caseRef. If you are in immediate danger, call emergency services."
+
+    private fun safetyCallbackSms(caseRef: String) =
+        "Aster Roadside: We ended the call so you can move to safety. Once you are away from traffic, call us back to continue your roadside request. Case ref: $caseRef. If you are in immediate danger, call emergency services."
+
+    private fun isSafetyCancellation(reason: String) =
+        reason.contains("safe place", ignoreCase = true) ||
+            reason.contains("safety risk", ignoreCase = true) ||
+            reason.contains("move to safety", ignoreCase = true)
 
     private data class IncidentClassification(
         val canonicalType: String?,
