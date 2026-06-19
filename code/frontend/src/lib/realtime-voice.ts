@@ -315,6 +315,44 @@ async function handleRealtimeServerEvent(
           safetySummary,
         });
       }
+      if (disposition === "human_callback") {
+        const finalMessage = humanCallbackFinalMessage(callbackReason, safetySummary);
+        const finalReason =
+          callbackReason ??
+          (isUnsafeSafetyCallback(callbackReason, safetySummary)
+            ? "Caller was not in a safe place for roadside intake."
+            : "AI agent routed the case to a human callback.");
+        if (!completionState.finalMessageIssued) {
+          completionState.finalMessageIssued = true;
+          completionState.spokenReason = finalReason;
+          output = {
+            ended: false,
+            disposition: "continue",
+            finalMessage,
+            reason:
+              "Say finalMessage to the caller before ending the call. Then call end_call again with the same disposition and reason.",
+          };
+          logRealtimeTool("output", { name, callId, output });
+          sendFunctionOutput(dataChannel, callId, output);
+          dataChannel.send(JSON.stringify({ type: "response.create" }));
+          return;
+        }
+        if (!completionState.finalMessageSpoken) {
+          completionState.spokenReason = finalReason;
+          output = {
+            ended: false,
+            disposition: "continue",
+            finalMessage,
+            reason:
+              "The final caller-facing message has not been spoken yet. Say finalMessage before calling end_call again.",
+            lastAssistantTranscript: completionState.lastAssistantTranscript,
+          };
+          logRealtimeTool("output", { name, callId, output });
+          sendFunctionOutput(dataChannel, callId, output);
+          dataChannel.send(JSON.stringify({ type: "response.create" }));
+          return;
+        }
+      }
       output = { ended: true, disposition, reason: callbackReason };
       logRealtimeTool("output", { name, callId, output });
       sendFunctionOutput(dataChannel, callId, output);
@@ -422,6 +460,27 @@ function finishRealtimeCall(
 
 function firstNonEmpty(...values: Array<string | undefined>) {
   return values.find((value) => value !== undefined && value.trim().length > 0);
+}
+
+function humanCallbackFinalMessage(reason?: string, safetySummary?: string) {
+  if (isUnsafeSafetyCallback(reason, safetySummary)) {
+    return "Please get to a safe place away from traffic now. If anyone is injured or you cannot get safe, call emergency services immediately. Once you are safe, call Aster Roadside back and we will continue. I am ending this call so you can focus on safety.";
+  }
+
+  return "I will pass this to a roadside specialist. They will call you back as soon as one is available, and I will send a text confirmation now.";
+}
+
+function isUnsafeSafetyCallback(reason?: string, safetySummary?: string) {
+  const text = `${reason ?? ""} ${safetySummary ?? ""}`.toLowerCase();
+  return (
+    text.includes("safe place") ||
+    text.includes("not safe") ||
+    text.includes("unsafe") ||
+    text.includes("safety risk") ||
+    text.includes("middle of the road") ||
+    text.includes("in the road") ||
+    text.includes("traffic")
+  );
 }
 
 function captureAssistantTranscript(
