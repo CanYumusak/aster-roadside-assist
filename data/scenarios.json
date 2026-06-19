@@ -1,0 +1,62 @@
+[
+  {
+    "id": "scenario-flat-tyre-safe",
+    "label": "Flat tyre, safe roadside",
+    "callerPrompt": "I have a flat tyre on a quiet residential street. I am parked safely and nobody is injured.",
+    "issueType": "flat_tire",
+    "locationPrompt": "I am on Lavender Hill near Clapham Junction, SW11.",
+    "safetyPrompt": "I am safely off the road and there are no passengers at risk.",
+    "expectedOutcome": "covered_repair_truck",
+    "recommendedVehicleTypes": ["petrol", "diesel", "hybrid"]
+  },
+  {
+    "id": "scenario-motorway-engine-failure",
+    "label": "Engine failure on motorway shoulder",
+    "callerPrompt": "The engine cut out on the motorway and I have stopped on the hard shoulder.",
+    "issueType": "engine_failure",
+    "locationPrompt": "I am on the M4 westbound near Reading services, before junction 12.",
+    "safetyPrompt": "I am behind the barrier now, but the car is on the hard shoulder.",
+    "expectedOutcome": "covered_tow_and_taxi",
+    "recommendedVehicleTypes": ["petrol", "diesel", "hybrid"]
+  },
+  {
+    "id": "scenario-dead-battery",
+    "label": "Dead battery near home",
+    "callerPrompt": "The car will not start and I think the battery is dead.",
+    "issueType": "dead_battery",
+    "locationPrompt": "I am outside my home near Leeds city centre, LS1.",
+    "safetyPrompt": "I am safe and the car is parked.",
+    "expectedOutcome": "covered_repair_truck",
+    "recommendedVehicleTypes": ["petrol", "diesel", "hybrid"]
+  },
+  {
+    "id": "scenario-ev-warning",
+    "label": "EV warning light",
+    "callerPrompt": "My electric car has a red battery warning and reduced power.",
+    "issueType": "ev_warning",
+    "locationPrompt": "I am in a retail park car park near Bristol, BS8.",
+    "safetyPrompt": "I am safe, there is no smoke, and the warning light is red.",
+    "expectedOutcome": "human_review_ev_tow",
+    "recommendedVehicleTypes": ["electric"]
+  },
+  {
+    "id": "scenario-possible-injury",
+    "label": "Collision with possible injury",
+    "callerPrompt": "There has been a collision and one passenger may be injured.",
+    "issueType": "accident_with_injury",
+    "locationPrompt": "I am near Oxford ring road, close to the Cowley exit.",
+    "safetyPrompt": "One passenger says their neck hurts.",
+    "expectedOutcome": "safety_escalation_human_review",
+    "recommendedVehicleTypes": ["petrol", "diesel", "hybrid", "electric"]
+  },
+  {
+    "id": "scenario-non-policyholder",
+    "label": "Passenger calling for policyholder",
+    "callerPrompt": "I am a passenger calling on behalf of the policyholder. They are shaken up and asked me to call.",
+    "issueType": "third_party_caller",
+    "locationPrompt": "We are parked in a lay-by near the A34 outside Oxford.",
+    "safetyPrompt": "We are safe and away from traffic.",
+    "expectedOutcome": "needs_human_callback",
+    "recommendedVehicleTypes": ["petrol", "diesel", "hybrid", "electric"]
+  }
+]

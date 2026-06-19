@@ -1,0 +1,175 @@
+[
+  {
+    "id": "policy-roadside-plus-001",
+    "name": "Roadside Plus",
+    "summary": "Full UK roadside assistance for common breakdowns, towing, and onward travel.",
+    "coverageTier": "plus",
+    "coveredEvents": [
+      "flat_tire",
+      "dead_battery",
+      "engine_failure",
+      "lost_keys",
+      "fuel_issue",
+      "minor_mechanical_fault"
+    ],
+    "assistanceBenefits": {
+      "roadsideRepair": true,
+      "towToNearestGarage": true,
+      "towToHome": true,
+      "taxi": true,
+      "rentalCar": true,
+      "overnightAccommodation": true
+    },
+    "limits": {
+      "maxTowDistanceKm": 80,
+      "maxTaxiCostGbp": 120,
+      "maxRentalDays": 2,
+      "maxAccommodationCostGbp": 180,
+      "annualCalloutLimit": 5
+    },
+    "exclusions": [
+      "accident_with_injury",
+      "intentional_damage",
+      "vehicle_used_for_racing",
+      "vehicle_not_roadworthy_before_trip",
+      "breakdown_outside_uk"
+    ],
+    "escalationRules": [
+      "injury_reported",
+      "customer_in_unsafe_location",
+      "child_or_vulnerable_passenger_stranded",
+      "policy_match_confidence_below_0_75",
+      "coverage_exclusion_possible"
+    ]
+  },
+  {
+    "id": "policy-roadside-basic-002",
+    "name": "Roadside Basic",
+    "summary": "Entry-level roadside assistance covering local roadside repair and limited towing.",
+    "coverageTier": "basic",
+    "coveredEvents": [
+      "flat_tire",
+      "dead_battery",
+      "minor_mechanical_fault"
+    ],
+    "assistanceBenefits": {
+      "roadsideRepair": true,
+      "towToNearestGarage": true,
+      "towToHome": false,
+      "taxi": false,
+      "rentalCar": false,
+      "overnightAccommodation": false
+    },
+    "limits": {
+      "maxTowDistanceKm": 25,
+      "maxTaxiCostGbp": 0,
+      "maxRentalDays": 0,
+      "maxAccommodationCostGbp": 0,
+      "annualCalloutLimit": 3
+    },
+    "exclusions": [
+      "engine_failure_requiring_long_distance_tow",
+      "accident_with_injury",
+      "lost_keys",
+      "fuel_issue",
+      "breakdown_at_home",
+      "breakdown_outside_uk"
+    ],
+    "escalationRules": [
+      "injury_reported",
+      "customer_in_unsafe_location",
+      "tow_distance_above_limit",
+      "requested_benefit_not_in_policy",
+      "policy_match_confidence_below_0_75"
+    ]
+  },
+  {
+    "id": "policy-electric-ev-003",
+    "name": "EV Assist",
+    "summary": "Roadside assistance tailored to electric vehicles, including battery and charging support.",
+    "coverageTier": "ev",
+    "coveredEvents": [
+      "flat_tire",
+      "dead_battery",
+      "ev_battery_depleted",
+      "charging_station_failure",
+      "minor_mechanical_fault",
+      "software_lockout"
+    ],
+    "assistanceBenefits": {
+      "roadsideRepair": true,
+      "towToNearestGarage": true,
+      "towToChargingStation": true,
+      "towToHome": true,
+      "taxi": true,
+      "rentalCar": true,
+      "overnightAccommodation": false
+    },
+    "limits": {
+      "maxTowDistanceKm": 100,
+      "maxTaxiCostGbp": 150,
+      "maxRentalDays": 2,
+      "maxAccommodationCostGbp": 0,
+      "annualCalloutLimit": 6
+    },
+    "exclusions": [
+      "accident_with_injury",
+      "vehicle_modified_battery_system",
+      "commercial_delivery_use",
+      "intentional_battery_depletion",
+      "breakdown_outside_uk"
+    ],
+    "escalationRules": [
+      "injury_reported",
+      "customer_in_unsafe_location",
+      "high_voltage_warning_reported",
+      "battery_damage_suspected",
+      "policy_match_confidence_below_0_75"
+    ]
+  },
+  {
+    "id": "policy-european-premier-004",
+    "name": "European Premier",
+    "summary": "Premium roadside assistance for UK and European travel with broad onward mobility support.",
+    "coverageTier": "premier",
+    "coveredEvents": [
+      "flat_tire",
+      "dead_battery",
+      "engine_failure",
+      "lost_keys",
+      "fuel_issue",
+      "minor_mechanical_fault",
+      "breakdown_outside_uk"
+    ],
+    "assistanceBenefits": {
+      "roadsideRepair": true,
+      "towToNearestGarage": true,
+      "towToHome": true,
+      "taxi": true,
+      "rentalCar": true,
+      "overnightAccommodation": true,
+      "vehicleRepatriation": true
+    },
+    "limits": {
+      "maxTowDistanceKm": 250,
+      "maxTaxiCostGbp": 250,
+      "maxRentalDays": 5,
+      "maxAccommodationCostGbp": 500,
+      "annualCalloutLimit": 8
+    },
+    "exclusions": [
+      "accident_with_injury",
+      "vehicle_used_for_racing",
+      "sanctioned_country_travel",
+      "known_pre_existing_fault",
+      "driver_without_valid_license"
+    ],
+    "escalationRules": [
+      "injury_reported",
+      "customer_in_unsafe_location",
+      "cross_border_repatriation_needed",
+      "foreign_garage_availability_unclear",
+      "policy_match_confidence_below_0_75"
+    ]
+  }
+]

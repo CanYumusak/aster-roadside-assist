@@ -1,0 +1,284 @@
+[
+  {
+    "id": "cust-001",
+    "demoLabel": "Single car - common family hatchback",
+    "name": "Amelia Hart",
+    "birthDate": "1986-04-17",
+    "phoneNumber": "+447700900101",
+    "roadsidePin": "482759",
+    "homePostcode": "SW11 2AA",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-001-a",
+        "registration": "LD21 XKP",
+        "make": "Ford",
+        "model": "Focus",
+        "year": 2021,
+        "colour": "Blue",
+        "fuelType": "petrol",
+        "policyId": "policy-roadside-plus-001"
+      }
+    ]
+  },
+  {
+    "id": "cust-002",
+    "demoLabel": "Single car - basic roadside cover",
+    "name": "James Okafor",
+    "birthDate": "1979-11-03",
+    "phoneNumber": "+447700900102",
+    "roadsidePin": "619284",
+    "homePostcode": "M20 3DX",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-002-a",
+        "registration": "MJ18 LVA",
+        "make": "Volkswagen",
+        "model": "Golf",
+        "year": 2018,
+        "colour": "Silver",
+        "fuelType": "diesel",
+        "policyId": "policy-roadside-basic-002"
+      }
+    ]
+  },
+  {
+    "id": "cust-003",
+    "demoLabel": "Single car - EV assist",
+    "name": "Priya Shah",
+    "birthDate": "1991-07-22",
+    "phoneNumber": "+447700900103",
+    "roadsidePin": "735921",
+    "homePostcode": "BS8 1TH",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-003-a",
+        "registration": "BJ72 EVS",
+        "make": "Tesla",
+        "model": "Model 3",
+        "year": 2022,
+        "colour": "White",
+        "fuelType": "electric",
+        "policyId": "policy-electric-ev-003"
+      }
+    ]
+  },
+  {
+    "id": "cust-004",
+    "demoLabel": "Single car - premium European cover",
+    "name": "Oliver Bennett",
+    "birthDate": "1983-02-09",
+    "phoneNumber": "+447700900104",
+    "roadsidePin": "904315",
+    "homePostcode": "EH3 6QH",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-004-a",
+        "registration": "SC20 RDX",
+        "make": "BMW",
+        "model": "320i Touring",
+        "year": 2020,
+        "colour": "Black",
+        "fuelType": "petrol",
+        "policyId": "policy-european-premier-004"
+      }
+    ]
+  },
+  {
+    "id": "cust-005",
+    "demoLabel": "Single car - older vehicle",
+    "name": "Maya Thompson",
+    "birthDate": "1994-09-14",
+    "phoneNumber": "+447700900105",
+    "roadsidePin": "158602",
+    "homePostcode": "CF10 1EP",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-005-a",
+        "registration": "CY15 MTA",
+        "make": "Toyota",
+        "model": "Yaris",
+        "year": 2015,
+        "colour": "Red",
+        "fuelType": "hybrid",
+        "policyId": "policy-roadside-plus-001"
+      }
+    ]
+  },
+  {
+    "id": "cust-006",
+    "demoLabel": "Single car - basic cover edge cases",
+    "name": "Daniel Cooper",
+    "birthDate": "1975-12-28",
+    "phoneNumber": "+447700900106",
+    "roadsidePin": "276948",
+    "homePostcode": "LS1 4AP",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-006-a",
+        "registration": "YE19 DCP",
+        "make": "Nissan",
+        "model": "Qashqai",
+        "year": 2019,
+        "colour": "Grey",
+        "fuelType": "petrol",
+        "policyId": "policy-roadside-basic-002"
+      }
+    ]
+  },
+  {
+    "id": "cust-007",
+    "demoLabel": "Single car - EV safety escalation",
+    "name": "Sofia Martins",
+    "birthDate": "1989-05-06",
+    "phoneNumber": "+447700900107",
+    "roadsidePin": "843650",
+    "homePostcode": "N1 8DU",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-007-a",
+        "registration": "LN23 KWH",
+        "make": "Hyundai",
+        "model": "Kona Electric",
+        "year": 2023,
+        "colour": "Green",
+        "fuelType": "electric",
+        "policyId": "policy-electric-ev-003"
+      }
+    ]
+  },
+  {
+    "id": "cust-008",
+    "demoLabel": "Two cars - choose vehicle",
+    "name": "Noah Williams",
+    "birthDate": "1981-08-19",
+    "phoneNumber": "+447700900108",
+    "roadsidePin": "395174",
+    "homePostcode": "B15 2TT",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-008-a",
+        "registration": "BK20 NWA",
+        "make": "Audi",
+        "model": "A4",
+        "year": 2020,
+        "colour": "White",
+        "fuelType": "diesel",
+        "policyId": "policy-roadside-plus-001"
+      },
+      {
+        "id": "veh-008-b",
+        "registration": "BK68 NWB",
+        "make": "Mini",
+        "model": "Cooper",
+        "year": 2018,
+        "colour": "Yellow",
+        "fuelType": "petrol",
+        "policyId": "policy-roadside-basic-002"
+      }
+    ]
+  },
+  {
+    "id": "cust-009",
+    "demoLabel": "Two cars - petrol and EV",
+    "name": "Grace Wilson",
+    "birthDate": "1996-01-31",
+    "phoneNumber": "+447700900109",
+    "roadsidePin": "520836",
+    "homePostcode": "G12 8QQ",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-009-a",
+        "registration": "GL21 GWA",
+        "make": "Kia",
+        "model": "Sportage",
+        "year": 2021,
+        "colour": "Blue",
+        "fuelType": "petrol",
+        "policyId": "policy-roadside-plus-001"
+      },
+      {
+        "id": "veh-009-b",
+        "registration": "GL73 GWE",
+        "make": "Volkswagen",
+        "model": "ID.3",
+        "year": 2023,
+        "colour": "White",
+        "fuelType": "electric",
+        "policyId": "policy-electric-ev-003"
+      }
+    ]
+  },
+  {
+    "id": "cust-010",
+    "demoLabel": "Three cars - household policy",
+    "name": "Ethan Clarke",
+    "birthDate": "1972-10-11",
+    "phoneNumber": "+447700900110",
+    "roadsidePin": "667219",
+    "homePostcode": "OX2 6GG",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-010-a",
+        "registration": "OX19 ECA",
+        "make": "Mercedes-Benz",
+        "model": "C-Class",
+        "year": 2019,
+        "colour": "Black",
+        "fuelType": "diesel",
+        "policyId": "policy-european-premier-004"
+      },
+      {
+        "id": "veh-010-b",
+        "registration": "OX17 ECB",
+        "make": "Honda",
+        "model": "Jazz",
+        "year": 2017,
+        "colour": "Red",
+        "fuelType": "petrol",
+        "policyId": "policy-roadside-basic-002"
+      },
+      {
+        "id": "veh-010-c",
+        "registration": "OX24 EVC",
+        "make": "Polestar",
+        "model": "2",
+        "year": 2024,
+        "colour": "Grey",
+        "fuelType": "electric",
+        "policyId": "policy-electric-ev-003"
+      }
+    ]
+  },
+  {
+    "id": "cust-011",
+    "demoLabel": "Unknown-number verification demo",
+    "name": "Alex Carter",
+    "birthDate": "1988-02-19",
+    "phoneNumber": "+447700900111",
+    "roadsidePin": "5482",
+    "homePostcode": "SW17 0BW",
+    "preferredContact": "sms",
+    "vehicles": [
+      {
+        "id": "veh-011-a",
+        "registration": "LX20 ACT",
+        "make": "Vauxhall",
+        "model": "Astra",
+        "year": 2020,
+        "colour": "Blue",
+        "fuelType": "petrol",
+        "policyId": "policy-roadside-plus-001"
+      }
+    ]
+  }
+]
