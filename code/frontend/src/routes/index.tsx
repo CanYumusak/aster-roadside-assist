@@ -84,6 +84,17 @@ function AsterApp() {
   const caseRef = backendClaim?.id ?? fallbackCaseRef;
 
   const selectedVehicle = customer?.vehicles[selectedVehicleIndex] ?? null;
+  const resolvedCustomer =
+    (backendClaim?.customerId
+      ? customers.find((candidate) => candidate.id === backendClaim.customerId)
+      : null) ?? customer;
+  const resolvedVehicle =
+    resolvedCustomer?.vehicles.find(
+      (candidate) => candidate.id === backendClaim?.intakeFacts.selectedVehicleId,
+    ) ??
+    (resolvedCustomer?.id === customer?.id ? selectedVehicle : null) ??
+    resolvedCustomer?.vehicles[0] ??
+    selectedVehicle;
 
   useEffect(() => {
     let cancelled = false;
@@ -298,8 +309,8 @@ function AsterApp() {
           )}
           {screen === "sms" && (
             <SmsPreview
-              customer={customer}
-              vehicle={selectedVehicle}
+              customer={resolvedCustomer}
+              vehicle={resolvedVehicle}
               claim={backendClaim}
               onReset={reset}
             />

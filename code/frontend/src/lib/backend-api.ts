@@ -44,6 +44,11 @@ type BackendScenario = {
 
 export type ClaimSession = {
   id: string;
+  callerPhoneNumber: string;
+  customerId: string | null;
+  scenarioId: string | null;
+  authMode: "KNOWN_NUMBER_SIMULATED" | "FALLBACK_SIMULATED";
+  authRisk: "STANDARD" | "ELEVATED";
   stage: string;
   status: string;
   intakeFacts: {

@@ -152,6 +152,7 @@ function serializeContext(context: RealtimeVoiceContext) {
 
 type RealtimeFunctionCall = {
   type?: string;
+  role?: string;
   name?: string;
   call_id?: string;
   arguments?: string;
@@ -163,6 +164,7 @@ type RealtimeFunctionCall = {
 type CompletionState = {
   finalMessageIssued: boolean;
   finalMessageSpoken: boolean;
+  spokenDisposition?: RealtimeVoiceDoneDisposition;
   lastAssistantTranscript?: string;
   pendingClose?: {
     disposition: RealtimeVoiceDoneDisposition;
@@ -195,6 +197,7 @@ async function handleRealtimeServerEvent(
   const item = event.item ?? event;
   captureAssistantTranscript(event, item, completionState);
   maybeCloseAfterAudioDone(event, completionState, closeSession, callbacks);
+  maybeCloseAfterSpokenFinal(event, completionState, closeSession, callbacks);
 
   const callIdForEvent = item.call_id ?? event.call_id;
   if (item.type === "function_call" && callIdForEvent && item.name) {
@@ -348,6 +351,44 @@ function maybeCloseAfterAudioDone(
   }
 }
 
+function maybeCloseAfterSpokenFinal(
+  event: RealtimeFunctionCall,
+  completionState: CompletionState,
+  closeSession: () => void,
+  callbacks: RealtimeVoiceCallbacks,
+) {
+  if (
+    !completionState.finalMessageSpoken ||
+    !completionState.spokenDisposition ||
+    completionState.pendingClose?.doneNotified
+  ) {
+    return;
+  }
+
+  completionState.pendingClose ??= {
+    disposition: completionState.spokenDisposition,
+    doneNotified: false,
+  };
+
+  const delayMs = isRealtimeDoneEvent(event.type) ? 1_000 : 4_000;
+  if (completionState.closeTimer) {
+    window.clearTimeout(completionState.closeTimer);
+  }
+  completionState.closeTimer = window.setTimeout(() => {
+    finishRealtimeCall(completionState, closeSession, callbacks);
+  }, delayMs);
+}
+
+function isRealtimeDoneEvent(type?: string) {
+  return (
+    type === "response.audio.done" ||
+    type === "response.output_audio.done" ||
+    type === "response.audio_transcript.done" ||
+    type === "response.output_item.done" ||
+    type === "response.done"
+  );
+}
+
 function finishRealtimeCall(
   completionState: CompletionState,
   closeSession: () => void,
@@ -373,6 +414,9 @@ function captureAssistantTranscript(
   item: RealtimeFunctionCall,
   completionState: CompletionState,
 ) {
+  const eventType = event.type ?? "";
+  if (!eventType.startsWith("response.") && item.role !== "assistant") return;
+
   const transcript = firstNonEmpty(event.transcript, item.transcript, event.text, item.text);
   if (!transcript) return;
 
@@ -384,6 +428,15 @@ function captureAssistantTranscript(
     normalized.includes("next best action")
   ) {
     completionState.finalMessageSpoken = true;
+    completionState.spokenDisposition = "complete";
+  }
+  if (
+    normalized.includes("roadside specialist") &&
+    normalized.includes("call you back") &&
+    (normalized.includes("text") || normalized.includes("sms"))
+  ) {
+    completionState.finalMessageSpoken = true;
+    completionState.spokenDisposition = "human_callback";
   }
 }
 

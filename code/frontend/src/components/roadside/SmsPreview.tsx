@@ -49,6 +49,7 @@ export function SmsPreview({
   const safetySummary =
     claim?.intakeFacts.safetySummary ??
     "Safety verbally checked";
+  const authSummary = formatAuthSummary(claim);
 
   return (
     <div className="flex h-full flex-col">
@@ -104,6 +105,7 @@ export function SmsPreview({
               />
             )}
             <SummaryRow label="Name" value={customer?.name ?? "Unknown caller"} />
+            <SummaryRow label="Authentication" value={authSummary} />
             <SummaryRow label="Car" value={vehicleLabel} />
             <SummaryRow label="Incident" value={incidentSummary} />
             <SummaryRow label="Safety" value={safetySummary} />
@@ -118,6 +120,19 @@ export function SmsPreview({
       </div>
     </div>
   );
+}
+
+function formatAuthSummary(claim: ClaimSession | null) {
+  if (!claim) return "Not available";
+  if (!claim.intakeFacts.identityConfirmed) {
+    return claim.authMode === "FALLBACK_SIMULATED"
+      ? "Unknown number; full verification failed or was not completed"
+      : "Known policyholder number; PIN verification failed or was not completed";
+  }
+  if (claim.authMode === "FALLBACK_SIMULATED") {
+    return "Unknown number; verified with full name, birthdate, and requested PIN digits";
+  }
+  return "Known policyholder number; verified with requested PIN digits";
 }
 
 function formatStatus(status?: string | null) {
