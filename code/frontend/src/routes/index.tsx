@@ -422,7 +422,6 @@ function StartScreen({
   backendStatus: BackendStatus;
 }) {
   const [open, setOpen] = useState(false);
-  const matched = customers.find((c) => c.phone === phone);
   const knownDemoCustomers = customers.filter(
     (c) => c.id !== "cust-011" && c.name !== "Alex Carter",
   );
@@ -449,11 +448,6 @@ function StartScreen({
               placeholder="+44 7700 900000"
               className="h-10 w-full bg-transparent px-2.5 text-sm tabular-nums outline-none placeholder:text-muted-foreground/60"
             />
-            {matched && (
-              <span className="mr-3 hidden rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary md:inline">
-                Known policyholder · {matched.name}
-              </span>
-            )}
           </div>
           <Button onClick={onStart} disabled={!phone} className="h-10 gap-2">
             <Phone className="h-4 w-4" /> Start call
