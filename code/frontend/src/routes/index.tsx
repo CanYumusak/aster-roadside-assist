@@ -319,6 +319,7 @@ function AsterApp() {
 
         <DemoGuide
           phone={phone}
+          customers={customers}
           customer={customer}
           selectedVehicleIndex={selectedVehicleIndex}
           setSelectedVehicleIndex={setSelectedVehicleIndex}
@@ -422,6 +423,9 @@ function StartScreen({
 }) {
   const [open, setOpen] = useState(false);
   const matched = customers.find((c) => c.phone === phone);
+  const knownDemoCustomers = customers.filter(
+    (c) => c.id !== "cust-011" && c.name !== "Alex Carter",
+  );
   return (
     <div className="flex h-full items-center justify-center px-8">
       <div className="w-full max-w-lg">
@@ -481,7 +485,7 @@ function StartScreen({
                 </span>
               </button>
               <ul className="divide-y divide-border">
-                {customers.map((c) => (
+                {knownDemoCustomers.map((c) => (
                   <li key={c.id}>
                     <button
                       type="button"

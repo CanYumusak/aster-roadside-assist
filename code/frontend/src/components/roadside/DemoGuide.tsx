@@ -1,9 +1,34 @@
 import { useMemo } from "react";
 import { CUSTOMERS, SCENARIOS, type Customer, type Stage } from "@/lib/roadside-data";
-import { ShieldAlert, AlertTriangle, Car, MapPin, Phone, KeyRound, Calendar, User } from "lucide-react";
+import { Car, MapPin, Phone, KeyRound, Calendar, User } from "lucide-react";
+
+const FALLBACK_UNKNOWN_DEMO_CUSTOMER: Customer = {
+  id: "cust-011",
+  name: "Alex Carter",
+  birthdate: "1988-02-19",
+  phone: "+44 7700 900111",
+  pin: "5482",
+  pinDigitsAsked: [1, 4],
+  tier: "Plus",
+  vehicles: [
+    {
+      id: "veh-011-a",
+      policyId: "policy-roadside-plus-001",
+      reg: "LX20 ACT",
+      make: "Vauxhall",
+      model: "Astra",
+      year: 2020,
+      fuel: "Petrol",
+    },
+  ],
+  suggestedScenarioId: "scenario-flat-tyre-safe",
+  suggestedLocation: "I am on Lavender Hill near Clapham Junction, SW11.",
+  suggestedSafety: "I am safely off the road and there are no passengers at risk.",
+};
 
 type Props = {
   phone: string;
+  customers: Customer[];
   customer: Customer | null;
   selectedVehicleIndex: number;
   setSelectedVehicleIndex: (i: number) => void;
@@ -14,6 +39,7 @@ type Props = {
 
 export function DemoGuide({
   phone,
+  customers,
   customer,
   selectedVehicleIndex,
   setSelectedVehicleIndex,
@@ -26,6 +52,14 @@ export function DemoGuide({
     [selectedScenarioId],
   );
   const isUnknown = !customer;
+  const unknownDemoCustomer = useMemo(
+    () =>
+      customers.find((candidate) => candidate.id === "cust-011") ??
+      customers.find((candidate) => candidate.name === "Alex Carter") ??
+      FALLBACK_UNKNOWN_DEMO_CUSTOMER,
+    [customers],
+  );
+  const guideCustomer = customer ?? unknownDemoCustomer;
 
   return (
     <aside className="flex h-full min-h-0 flex-col border-l border-border bg-surface">
@@ -40,11 +74,12 @@ export function DemoGuide({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {isUnknown ? (
-          <UnknownGuide phone={phone} />
-        ) : (
-          <KnownGuide
-            customer={customer}
+        <CallerContext phone={phone} isUnknown={isUnknown} />
+
+        {guideCustomer && (
+          <CustomerGuide
+            customer={guideCustomer}
+            isUnknown={isUnknown}
             selectedVehicleIndex={selectedVehicleIndex}
             setSelectedVehicleIndex={setSelectedVehicleIndex}
           />
@@ -54,7 +89,7 @@ export function DemoGuide({
 
         <div className="space-y-3 px-5 py-4">
           <div>
-            <Label icon={<AlertTriangle className="h-3.5 w-3.5" />}>Scenario</Label>
+            <Label>Scenario</Label>
             <select
               value={selectedScenarioId}
               onChange={(e) => setSelectedScenarioId(e.target.value)}
@@ -77,39 +112,56 @@ export function DemoGuide({
   );
 }
 
-function KnownGuide({
+function CallerContext({
+  phone,
+  isUnknown,
+}: {
+  phone: string;
+  isUnknown: boolean;
+}) {
+  return (
+    <div className="space-y-3 px-5 py-4">
+      <Field icon={<Phone className="h-3.5 w-3.5" />} label="Calling from" value={phone || "—"} />
+      <Field
+        label="Lookup result"
+        value={isUnknown ? "No phone match" : "Known policyholder number"}
+      />
+    </div>
+  );
+}
+
+function CustomerGuide({
   customer,
+  isUnknown,
   selectedVehicleIndex,
   setSelectedVehicleIndex,
 }: {
   customer: Customer;
+  isUnknown: boolean;
   selectedVehicleIndex: number;
   setSelectedVehicleIndex: (i: number) => void;
 }) {
+  const pinDigits = isUnknown ? [1, 4] : customer.pinDigitsAsked;
+
   return (
     <div>
-      <div className="px-5 py-4">
-        <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary-soft px-3 py-2.5">
-          <Phone className="mt-0.5 h-3.5 w-3.5 text-primary" />
-          <div>
-            <div className="text-[12px] font-medium">Known policyholder number</div>
-            <div className="text-[11px] text-muted-foreground">
-              The inbound caller number matched this policyholder record.
-            </div>
-          </div>
-        </div>
-      </div>
+      <Divider label={isUnknown ? "Use this identity" : "Customer"} />
 
       <div className="space-y-3 px-5 py-4">
         <Field icon={<User className="h-3.5 w-3.5" />} label="Name" value={customer.name} />
-        <Field icon={<Calendar className="h-3.5 w-3.5" />} label="Birthdate" value={customer.birthdate} />
-        <Field icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={customer.phone} />
+        {isUnknown && (
+          <Field
+            icon={<Calendar className="h-3.5 w-3.5" />}
+            label="Birthdate"
+            value={customer.birthdate}
+          />
+        )}
         <div>
           <Label icon={<KeyRound className="h-3.5 w-3.5" />}>Roadside PIN</Label>
           <div className="mt-1.5 flex items-center gap-2">
             {customer.pin.split("").map((d, i) => {
               const pos = i + 1;
-              const asked = customer.pinDigitsAsked.includes(pos);
+              const asked = pinDigits.includes(pos);
               return (
                 <div
                   key={i}
@@ -126,22 +178,17 @@ function KnownGuide({
             })}
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Agent asks for digits {customer.pinDigitsAsked.join(" and ")}.
+            Agent asks for digits {pinDigits.join(" and ")}.
           </p>
         </div>
       </div>
 
-      <Divider label="Policy" />
+      <Divider label={customer.vehicles.length > 1 ? "Vehicles" : "Vehicle"} />
 
       <div className="space-y-3 px-5 py-4">
-        <Field
-          icon={<ShieldAlert className="h-3.5 w-3.5" />}
-          label="Tier"
-          value={customer.tier}
-        />
         <div>
           <Label icon={<Car className="h-3.5 w-3.5" />}>
-            Vehicles on policy {customer.vehicles.length > 1 && `(${customer.vehicles.length})`}
+            {customer.vehicles.length > 1 ? `Choose one (${customer.vehicles.length})` : "Car"}
           </Label>
           <div className="mt-1.5 space-y-1.5">
             {customer.vehicles.map((v, i) => {
@@ -176,36 +223,6 @@ function KnownGuide({
             </p>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function UnknownGuide({ phone }: { phone: string }) {
-  return (
-    <div>
-      <div className="px-5 py-4">
-        <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2.5">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 text-[color:var(--warning)]" />
-          <div>
-            <div className="text-[12px] font-medium">Fallback verification</div>
-            <div className="text-[11px] text-muted-foreground">
-              Unknown number — name, birthdate, and requested PIN digits only.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-5 pb-4">
-        <Field icon={<Phone className="h-3.5 w-3.5" />} label="Calling from" value={phone || "—"} />
-      </div>
-
-      <Divider label="Say you are" />
-
-      <div className="space-y-3 px-5 py-4">
-        <Field icon={<User className="h-3.5 w-3.5" />} label="Name" value="Alex Carter" />
-        <Field icon={<Calendar className="h-3.5 w-3.5" />} label="Birthdate" value="1988-02-19" />
-        <Field icon={<KeyRound className="h-3.5 w-3.5" />} label="PIN challenge" value="Digits 1 and 4: 5 and 2" />
       </div>
     </div>
   );
