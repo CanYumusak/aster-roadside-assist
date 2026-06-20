@@ -11,7 +11,7 @@ import type {
 } from "@/lib/observation-data";
 
 const BACKEND_BASE =
-  import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8081";
+  import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") ?? "";
 const REFRESH_MS = 1_500;
 const SECURITY_EXIT_MESSAGE =
   "If anyone may be injured or in immediate danger, call emergency services now. Move to a safe place if you can. We cannot continue roadside intake until everyone is safe.";
