@@ -1,6 +1,7 @@
 export type Vehicle = {
   id?: string;
   policyId?: string;
+  policyName?: string;
   reg: string;
   make: string;
   model: string;
@@ -28,10 +29,10 @@ export type Scenario = {
   incidentPhrase: string;
   safetyPhrase: string;
   locationPhrase: string;
-  action: "Tow truck" | "Repair truck" | "Taxi / rental" | "Human review";
+  action: "Tow truck" | "Repair truck" | "Taxi / rental" | "Human review" | "Security exit";
   provider: string;
   etaMinutes: number;
-  coverage: "Covered" | "Covered with excess" | "Human review required";
+  coverage: "Covered" | "Covered with excess" | "Not covered" | "Human review required" | "Security exit";
   customerExplanation: string;
   severity: "low" | "medium" | "high";
 };
@@ -42,7 +43,7 @@ export const SCENARIOS: Scenario[] = [
     title: "Flat tyre, safe roadside",
     incidentPhrase: "I've got a flat tyre, front passenger side.",
     safetyPhrase: "I'm pulled into a layby, hazards on, everyone's fine.",
-    locationPhrase: "A roadside layby on the A40 just past the Beaconsfield turn-off.",
+    locationPhrase: "Beaconsfield Services, Windsor Road, Beaconsfield HP9 2SE.",
     action: "Repair truck",
     provider: "Westline Tyre & Recovery",
     etaMinutes: 38,
@@ -56,7 +57,7 @@ export const SCENARIOS: Scenario[] = [
     title: "Engine failure on motorway shoulder",
     incidentPhrase: "The engine cut out, lots of warning lights, I coasted onto the hard shoulder.",
     safetyPhrase: "I'm out of the car, behind the barrier, hazards on.",
-    locationPhrase: "M25 clockwise, between junction 16 and 17, near a blue marker.",
+    locationPhrase: "Reading Services Westbound, M4, Reading RG30 3UQ.",
     action: "Tow truck",
     provider: "National Highway Recovery",
     etaMinutes: 52,
@@ -70,7 +71,7 @@ export const SCENARIOS: Scenario[] = [
     title: "Dead battery near home",
     incidentPhrase: "Car won't start, just clicks. Battery I think.",
     safetyPhrase: "I'm on my driveway, no danger.",
-    locationPhrase: "Home address on file, on the driveway.",
+    locationPhrase: "Leeds Civic Hall, Calverley Street, Leeds LS1 1UR.",
     action: "Repair truck",
     provider: "Aster Home Assist",
     etaMinutes: 65,
@@ -84,7 +85,7 @@ export const SCENARIOS: Scenario[] = [
     title: "EV warning light",
     incidentPhrase: "Battery warning is on, range dropped fast, car is in limp mode.",
     safetyPhrase: "I've stopped in a supermarket car park.",
-    locationPhrase: "Sainsbury's car park in Reading town centre.",
+    locationPhrase: "The Oracle Riverside Car Park, Reading RG1 2AG.",
     action: "Tow truck",
     provider: "Voltline EV Recovery",
     etaMinutes: 47,
@@ -98,13 +99,13 @@ export const SCENARIOS: Scenario[] = [
     title: "Collision with possible injury",
     incidentPhrase: "Another car hit me at a junction, my passenger's neck hurts.",
     safetyPhrase: "We're out of the road but my passenger is in pain.",
-    locationPhrase: "Junction of King Street and Mill Road in Cambridge.",
-    action: "Human review",
-    provider: "Aster Major Incident Team",
-    etaMinutes: 12,
-    coverage: "Human review required",
+    locationPhrase: "Parker's Piece, Gonville Place, Cambridge CB1 1NA.",
+    action: "Security exit",
+    provider: "No dispatch",
+    etaMinutes: 0,
+    coverage: "Security exit",
     customerExplanation:
-      "I'm connecting you to a human handler now. Please stay on the line, help is being arranged.",
+      "If anyone may be injured or in immediate danger, call emergency services now. Move to a safe place if you can. We cannot continue roadside intake until everyone is safe.",
     severity: "high",
   },
 ];
@@ -120,7 +121,7 @@ export const CUSTOMERS: Customer[] = [
     tier: "Plus",
     vehicles: [{ reg: "LR21 KJD", make: "Volkswagen", model: "Golf", year: 2021, fuel: "Petrol" }],
     suggestedScenarioId: "flat-tyre",
-    suggestedLocation: "A roadside layby on the A40 just past the Beaconsfield turn-off.",
+    suggestedLocation: "Beaconsfield Services, Windsor Road, Beaconsfield HP9 2SE.",
     suggestedSafety: "Pulled in, hazards on, everyone safe.",
   },
   {
@@ -136,7 +137,7 @@ export const CUSTOMERS: Customer[] = [
       { reg: "GH22 PLM", make: "Mini", model: "Cooper", year: 2022, fuel: "Petrol" },
     ],
     suggestedScenarioId: "engine-motorway",
-    suggestedLocation: "M25 clockwise, between J16 and J17.",
+    suggestedLocation: "Reading Services Westbound, M4, Reading RG30 3UQ.",
     suggestedSafety: "Behind the barrier, hazards on.",
   },
   {
@@ -149,7 +150,7 @@ export const CUSTOMERS: Customer[] = [
     tier: "Essential",
     vehicles: [{ reg: "EA19 ZTM", make: "Ford", model: "Fiesta", year: 2019, fuel: "Petrol" }],
     suggestedScenarioId: "dead-battery",
-    suggestedLocation: "Home address on file.",
+    suggestedLocation: "Leeds Civic Hall, Calverley Street, Leeds LS1 1UR.",
     suggestedSafety: "On the driveway, no danger.",
   },
   {
@@ -166,7 +167,7 @@ export const CUSTOMERS: Customer[] = [
       { reg: "NB21 OAS", make: "Audi", model: "A4", year: 2021, fuel: "Hybrid" },
     ],
     suggestedScenarioId: "ev-warning",
-    suggestedLocation: "Sainsbury's car park, Reading.",
+    suggestedLocation: "The Oracle Riverside Car Park, Reading RG1 2AG.",
     suggestedSafety: "Parked safely, out of traffic.",
   },
   {
@@ -179,7 +180,7 @@ export const CUSTOMERS: Customer[] = [
     tier: "Plus",
     vehicles: [{ reg: "SY20 HBN", make: "Renault", model: "Zoe", year: 2020, fuel: "EV" }],
     suggestedScenarioId: "ev-warning",
-    suggestedLocation: "Bristol Cabot Circus car park.",
+    suggestedLocation: "Cabot Circus car park, Newfoundland Street, Bristol BS2 9AB.",
     suggestedSafety: "Parked, hazards on.",
   },
   {
@@ -192,7 +193,7 @@ export const CUSTOMERS: Customer[] = [
     tier: "Essential",
     vehicles: [{ reg: "MA17 GLP", make: "Vauxhall", model: "Astra", year: 2017, fuel: "Petrol" }],
     suggestedScenarioId: "flat-tyre",
-    suggestedLocation: "Layby on the A1, near Stevenage.",
+    suggestedLocation: "Asda Stevenage Supercentre, Monkswood Way, Stevenage SG1 1LA.",
     suggestedSafety: "Pulled off, hazards on.",
   },
   {
@@ -208,7 +209,7 @@ export const CUSTOMERS: Customer[] = [
       { reg: "EJ19 VND", make: "Honda", model: "Civic", year: 2019, fuel: "Petrol" },
     ],
     suggestedScenarioId: "dead-battery",
-    suggestedLocation: "Outside her flat in Leeds.",
+    suggestedLocation: "Leeds Civic Hall, Calverley Street, Leeds LS1 1UR.",
     suggestedSafety: "Parked on the street, no danger.",
   },
   {
@@ -221,7 +222,7 @@ export const CUSTOMERS: Customer[] = [
     tier: "Premier",
     vehicles: [{ reg: "BD24 KPL", make: "Mercedes", model: "E-Class", year: 2024, fuel: "Hybrid" }],
     suggestedScenarioId: "collision-injury",
-    suggestedLocation: "Junction of King Street and Mill Road, Cambridge.",
+    suggestedLocation: "Parker's Piece, Gonville Place, Cambridge CB1 1NA.",
     suggestedSafety: "Out of the road, but a passenger is hurt.",
   },
   {
@@ -234,7 +235,7 @@ export const CUSTOMERS: Customer[] = [
     tier: "Plus",
     vehicles: [{ reg: "WF21 ARM", make: "Skoda", model: "Octavia", year: 2021, fuel: "Diesel" }],
     suggestedScenarioId: "engine-motorway",
-    suggestedLocation: "M6 northbound, near Stafford.",
+    suggestedLocation: "Stafford Services Northbound, M6, Stone ST15 0XE.",
     suggestedSafety: "Hard shoulder, behind the barrier.",
   },
   {
@@ -247,7 +248,7 @@ export const CUSTOMERS: Customer[] = [
     tier: "Essential",
     vehicles: [{ reg: "PR16 CTY", make: "Citroën", model: "C3", year: 2016, fuel: "Petrol" }],
     suggestedScenarioId: "flat-tyre",
-    suggestedLocation: "Side street in Brighton, near the seafront.",
+    suggestedLocation: "Brighton Palace Pier, Madeira Drive, Brighton BN2 1TW.",
     suggestedSafety: "Parked, no danger.",
   },
 ];
@@ -275,4 +276,5 @@ export type CallState =
   | "Thinking"
   | "Speaking"
   | "Completed"
-  | "Escalated";
+  | "Escalated"
+  | "SecurityExit";

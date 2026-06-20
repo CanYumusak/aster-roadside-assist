@@ -27,7 +27,16 @@ cd code/frontend
 OPENAI_API_KEY=... npm run dev -- --host 127.0.0.1 --port 8080
 ```
 
-Open the app at `http://127.0.0.1:8080`.
+Observer:
+
+```bash
+cd code/observer
+npm run dev -- --host 127.0.0.1 --port 8082
+```
+
+Open the caller simulator at the frontend URL printed by Vite, and open the human
+observation console at the observer URL printed by Vite. The backend accepts local
+browser origins on any localhost port so the apps can move if a port is already in use.
 
 ## Demo Credentials
 

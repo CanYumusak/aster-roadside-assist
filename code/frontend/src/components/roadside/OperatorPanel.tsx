@@ -11,7 +11,6 @@ type Props = {
   selectedVehicleIndex: number;
   callState: CallState;
   stageIndex: number;
-  authRisk: "standard" | "elevated";
   caseRef: string;
   callerPhone: string;
 };
@@ -31,7 +30,6 @@ export function OperatorPanel({
   selectedVehicleIndex,
   callState,
   stageIndex,
-  authRisk,
   caseRef,
   callerPhone,
 }: Props) {
@@ -105,9 +103,8 @@ export function OperatorPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          <Section title="Auth & risk">
+          <Section title="Authentication">
             <Row k="Auth mode" v={customer ? "Known policyholder number + PIN digits" : "Name + DOB + PIN digits"} />
-            <Row k="Risk flag" v={authRisk} tone={authRisk === "elevated" ? "warn" : "ok"} />
             <Row k="Mismatch handling" v="Discard + human callback" tone="warn" />
             <Row k="Case ref" v={caseRef} mono />
             <Row k="Call state" v={callState} />
@@ -133,7 +130,7 @@ export function OperatorPanel({
               <Trace
                 ok
                 text={customer ? "Inbound caller number matched a known policyholder" : "Identity claim checked with name + DOB + requested PIN digits"}
-                warn={!customer && "Elevated risk: unknown calling number"}
+                warn={!customer && "Unknown number uses full verification"}
               />
               <Trace ok text={customer ? "PIN digits accepted; mismatch would discard intake" : "Fallback fields accepted in prototype; mismatch would discard intake after 3 attempts"} />
               <Trace ok text={`Tier: ${customer?.tier ?? "—"}`} />

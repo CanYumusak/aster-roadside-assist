@@ -95,7 +95,7 @@ The prototype should simulate authentication without blocking the demo:
 - Unknown-number caller: verify name, birthdate, and requested roadside PIN digits. Do not offer policy number, registration, postcode, or other fallback identifiers in the prototype.
 - Known-number caller PIN mismatch, or unknown-number name, birthdate, or PIN mismatch, discards the intake and routes to human callback.
 - Accept prototype verification when the provided fields match the selected demo identity.
-- Store `authMode` and `authRisk` so the operator-observability view can show whether verification was known-number simulated or fallback simulated.
+- Store `authMode` and `attentionFlags` so the operator-observability view can show whether verification was phone-match simulated, full-verification simulated, not-policyholder, failed, or otherwise needs review.
 
 Production authentication is a client decision:
 
@@ -122,7 +122,7 @@ Future observability surface:
 
 - Live transcript.
 - Extracted claim slots and confidence.
-- Auth mode and risk flag, including unknown-number fallback verification.
+- Auth method and attention flags, including unknown-number full verification.
 - Coverage decision trace.
 - Policy snippets or rules used.
 - Next-best-action ranking.

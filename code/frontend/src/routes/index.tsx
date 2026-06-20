@@ -11,6 +11,7 @@ import {
   type Stage,
 } from "@/lib/roadside-data";
 import {
+  cancelBackendClaim,
   createBackendClaim,
   finalizeBackendClaim,
   humanCallbackBackendClaim,
@@ -48,6 +49,14 @@ export const Route = createFileRoute("/")({
 type Screen = "start" | "call" | "sms";
 type BackendStatus = "connecting" | "connected" | "fallback";
 
+const KNOWN_DEMO_CUSTOMER_IDS = ["cust-005", "cust-007", "cust-008", "cust-010"];
+const KNOWN_DEMO_CUSTOMER_NAMES = [
+  "Maya Thompson",
+  "Sofia Martins",
+  "Noah Williams",
+  "Ethan Clarke",
+];
+
 function AsterApp() {
   const [screen, setScreen] = useState<Screen>("start");
   const [customers, setCustomers] = useState<Customer[]>(CUSTOMERS);
@@ -81,20 +90,19 @@ function AsterApp() {
     const ts = Date.now().toString(36).toUpperCase().slice(-5);
     return `RA-${ts}-${(customer?.id ?? "GST").toUpperCase()}`;
   }, [customer]);
-  const caseRef = backendClaim?.id ?? fallbackCaseRef;
+  const caseRef = backendClaim?.identity.id ?? fallbackCaseRef;
 
   const selectedVehicle = customer?.vehicles[selectedVehicleIndex] ?? null;
   const resolvedCustomer =
     (backendClaim?.customerId
-      ? customers.find((candidate) => candidate.id === backendClaim.customerId)
+      ? customers.find((candidate) => candidate.id === backendClaim.identity.customerId)
       : null) ?? customer;
   const resolvedVehicle =
-    resolvedCustomer?.vehicles.find(
-      (candidate) => candidate.id === backendClaim?.intakeFacts.selectedVehicleId,
-    ) ??
-    (resolvedCustomer?.id === customer?.id ? selectedVehicle : null) ??
-    resolvedCustomer?.vehicles[0] ??
-    selectedVehicle;
+    backendClaim?.intakeFacts.vehicleConfirmed === true
+      ? resolvedCustomer?.vehicles.find(
+          (candidate) => candidate.id === backendClaim.intakeFacts.selectedVehicleId,
+        ) ?? null
+      : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -164,12 +172,11 @@ function AsterApp() {
         callerPhone: phone,
         customer,
         selectedVehicle,
-        scenario,
-        caseRef: claimForSession?.id ?? caseRef,
+        caseRef: claimForSession?.identity.id ?? caseRef,
         authRisk,
       }, {
         onDone: (disposition, reason) => {
-          void finishCallFromAgent(disposition, claimForSession?.id, reason);
+          void finishCallFromAgent(disposition, claimForSession?.identity.id, reason);
         },
       });
       setVoiceStatus("connected");
@@ -186,9 +193,15 @@ function AsterApp() {
     void syncBackendStage(STAGES[next]);
 
     if (next === STAGES.length - 1) {
-      const escalated = scenario.coverage === "Human review required";
-      setCallDisposition(escalated ? "human_callback" : "complete");
-      setCallState(escalated ? "Escalated" : "Completed");
+      const terminalExit = isTerminalExitScenario(scenario);
+      setCallDisposition(terminalDispositionFor(scenario));
+      setCallState(
+        scenario.coverage === "Security exit"
+          ? "SecurityExit"
+          : terminalExit
+            ? "Escalated"
+            : "Completed",
+      );
       setTimeout(() => setScreen("sms"), 500);
     } else {
       setCallState((s) =>
@@ -204,11 +217,11 @@ function AsterApp() {
 
     try {
       if (stage === "SMS") {
-        setBackendClaim(await finalizeBackendClaim(backendClaim.id));
+        setBackendClaim(await finalizeBackendClaim(backendClaim.identity.id));
         return;
       }
 
-      const updated = await updateBackendFacts(backendClaim.id, factsForStage(stage));
+      const updated = await updateBackendFacts(backendClaim.identity.id, factsForStage(stage));
       setBackendClaim(updated);
       setBackendStatus("connected");
     } catch {
@@ -221,15 +234,21 @@ function AsterApp() {
     realtimeSessionRef.current = null;
     if (backendClaim) {
       try {
-        setBackendClaim(await finalizeBackendClaim(backendClaim.id));
+        setBackendClaim(await finalizeBackendClaim(backendClaim.identity.id));
         setBackendStatus("connected");
       } catch {
         setBackendStatus("fallback");
       }
     }
     setVoiceStatus("idle");
-    setCallDisposition(scenario.coverage === "Human review required" ? "human_callback" : "complete");
-    setCallState("Completed");
+    setCallDisposition(terminalDispositionFor(scenario));
+    setCallState(
+      scenario.coverage === "Security exit"
+        ? "SecurityExit"
+        : isTerminalExitScenario(scenario)
+          ? "Escalated"
+          : "Completed",
+    );
     setScreen("sms");
     setStageIndex(STAGES.length - 1);
   }
@@ -248,6 +267,8 @@ function AsterApp() {
                 claimId,
                 reason ?? "AI agent routed the case to a human callback.",
               )
+            : disposition === "cancelled"
+              ? await cancelBackendClaim(claimId, reason ?? "Call cancelled.")
             : await finalizeBackendClaim(claimId),
         );
         setBackendStatus("connected");
@@ -257,7 +278,15 @@ function AsterApp() {
     }
     setVoiceStatus("idle");
     setCallDisposition(disposition);
-    setCallState(disposition === "human_callback" ? "Escalated" : "Completed");
+    setCallState(
+      isSecurityExitReason(reason)
+        ? "SecurityExit"
+        : disposition === "human_callback"
+          ? "Escalated"
+          : disposition === "cancelled"
+            ? "SecurityExit"
+          : "Completed",
+    );
     setScreen("sms");
     setStageIndex(STAGES.length - 1);
   }
@@ -297,7 +326,6 @@ function AsterApp() {
           {screen === "call" && (
             <CallSurface
               callState={callState}
-              stageIndex={stageIndex}
               onStart={handleStart}
               onEnd={handleEnd}
               onNext={handleNext}
@@ -320,6 +348,7 @@ function AsterApp() {
 
         <DemoGuide
           phone={phone}
+          scenarios={scenarios}
           customers={customers}
           customer={customer}
           selectedVehicleIndex={selectedVehicleIndex}
@@ -423,9 +452,7 @@ function StartScreen({
   backendStatus: BackendStatus;
 }) {
   const [open, setOpen] = useState(false);
-  const knownDemoCustomers = customers.filter(
-    (c) => c.id !== "cust-011" && c.name !== "Alex Carter",
-  );
+  const knownDemoCustomers = selectKnownDemoCustomers(customers);
   return (
     <div className="flex h-full items-center justify-center px-8">
       <div className="w-full max-w-lg">
@@ -475,8 +502,8 @@ function StartScreen({
                   <div className="font-medium">Unknown caller (name + DOB + PIN)</div>
                   <div className="text-[11.5px] text-muted-foreground">{UNKNOWN_DEMO_PHONE}</div>
                 </div>
-                <span className="text-[11px] uppercase tracking-wider text-[color:oklch(0.5_0.13_75)]">
-                  Elevated risk
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Full verification
                 </span>
               </button>
               <ul className="divide-y divide-border">
@@ -503,5 +530,63 @@ function StartScreen({
         </div>
       </div>
     </div>
+  );
+}
+
+function selectKnownDemoCustomers(customers: Customer[]) {
+  const knownCustomers = customers.filter((c) => c.id !== "cust-011" && c.name !== "Alex Carter");
+  const preferred = KNOWN_DEMO_CUSTOMER_IDS
+    .map((id) => knownCustomers.find((customer) => customer.id === id))
+    .filter((customer): customer is Customer => Boolean(customer));
+
+  if (preferred.length > 0) return preferred;
+
+  const byName = KNOWN_DEMO_CUSTOMER_NAMES
+    .map((name) => knownCustomers.find((customer) => customer.name === name))
+    .filter((customer): customer is Customer => Boolean(customer));
+  if (byName.length > 0) return byName;
+
+  return uniqueCustomers([
+    knownCustomers.find((customer) => customer.vehicles.length === 1),
+    knownCustomers.find((customer) => customer.vehicles.some((vehicle) => vehicle.fuel === "EV")),
+    knownCustomers.find((customer) => customer.vehicles.length === 2),
+    knownCustomers.find((customer) => customer.vehicles.length >= 3),
+  ]).slice(0, 4);
+}
+
+function uniqueCustomers(customers: Array<Customer | undefined>) {
+  const seen = new Set<string>();
+  return customers.filter((customer): customer is Customer => {
+    if (!customer || seen.has(customer.id)) return false;
+    seen.add(customer.id);
+    return true;
+  });
+}
+
+function isTerminalExitScenario(scenario: Scenario) {
+  return scenario.coverage === "Human review required" || scenario.coverage === "Security exit";
+}
+
+function terminalDispositionFor(scenario: Scenario): RealtimeVoiceDoneDisposition {
+  if (scenario.coverage === "Security exit") return "cancelled";
+  if (scenario.coverage === "Human review required") return "human_callback";
+  return "complete";
+}
+
+function isSecurityExitReason(reason?: string) {
+  const normalized = reason?.toLowerCase() ?? "";
+  return (
+    normalized.includes("security exit") ||
+    normalized.includes("immediate safety") ||
+    normalized.includes("immediate danger") ||
+    normalized.includes("injury") ||
+    normalized.includes("injured") ||
+    normalized.includes("emergency services") ||
+    normalized.includes("safe place") ||
+    normalized.includes("not safe") ||
+    normalized.includes("unsafe") ||
+    normalized.includes("away from traffic") ||
+    normalized.includes("middle of the road") ||
+    normalized.includes("in traffic")
   );
 }

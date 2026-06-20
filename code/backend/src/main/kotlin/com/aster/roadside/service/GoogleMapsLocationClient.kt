@@ -38,7 +38,7 @@ class GoogleMapsLocationClient(
             when (acceptedResults.size) {
                 0 -> null
                 1 -> acceptedResults.first()
-                else -> acceptedResults.first().asAmbiguous(acceptedResults.map { it.formattedAddress })
+                else -> acceptedResults.first().asAmbiguous(acceptedResults.flatMap { it.candidateAddresses })
             }
         }.onFailure {
             log.info("google_location_lookup_failed reason={}", it.javaClass.simpleName)
@@ -71,7 +71,7 @@ class GoogleMapsLocationClient(
             googleMapsUri = mapsUri,
             placeId = record["id"] as? String,
             displayName = displayName,
-            candidateAddresses = listOf(formattedAddress),
+            candidateAddresses = listOf(candidateLabel(displayName, formattedAddress)),
         )
     }
 
@@ -91,6 +91,57 @@ class GoogleMapsLocationClient(
             address.contains("Leeds", ignoreCase = true) -> "Leeds"
             else -> address.split(',').dropLast(1).lastOrNull()?.trim().orEmpty().ifBlank { "Resolved by Google Maps" }
         }
+
+    private fun candidateLabel(
+        displayName: String?,
+        formattedAddress: String,
+    ): String {
+        val addressSegments =
+            displayName
+                ?.let { dropDuplicatePlaceSegment(conciseAddressSegments(formattedAddress), it) }
+                ?: conciseAddressSegments(formattedAddress)
+        val conciseAddress = addressSegments.joinToString(", ")
+        return displayName
+            ?.takeIf { it.isNotBlank() && !conciseAddress.startsWith(it, ignoreCase = true) }
+            ?.let { "$it, $conciseAddress" }
+            ?: conciseAddress
+    }
+
+    private fun conciseAddressSegments(address: String): List<String> =
+        address
+            .replace(UK_POSTCODE, "")
+            .replace(Regex(",?\\s*United Kingdom\\s*$", RegexOption.IGNORE_CASE), "")
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+
+    private fun dropDuplicatePlaceSegment(
+        addressSegments: List<String>,
+        displayName: String,
+    ): List<String> {
+        val firstSegment = addressSegments.firstOrNull() ?: return addressSegments
+        val displayTokens = normalizedTokens(displayName)
+        val firstSegmentTokens = normalizedTokens(firstSegment)
+        val duplicated =
+            displayTokens.any { displayToken ->
+                displayToken.length > 2 &&
+                    firstSegmentTokens.any { firstToken ->
+                        val normalizedFirst = firstToken.removeSuffix("s")
+                        val normalizedDisplay = displayToken.removeSuffix("s")
+                        normalizedFirst == normalizedDisplay ||
+                            normalizedFirst.contains(normalizedDisplay) ||
+                            normalizedDisplay.contains(normalizedFirst)
+                    }
+            }
+
+        return if (duplicated && addressSegments.size > 1) addressSegments.drop(1) else addressSegments
+    }
+
+    private fun normalizedTokens(value: String): List<String> =
+        value
+            .lowercase()
+            .split(Regex("[^a-z0-9]+"))
+            .filter { it.isNotBlank() }
 
     private fun textSearchBody(query: String) =
         mapOf(
@@ -129,6 +180,7 @@ class GoogleMapsLocationClient(
         const val PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
         const val FIELD_MASK =
             "places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri,places.addressComponents"
+        val UK_POSTCODE = Regex("\\b[A-Z]{1,2}\\d[A-Z\\d]?\\s*\\d[A-Z]{2}\\b", RegexOption.IGNORE_CASE)
         val NON_UK_HINTS =
             setOf(
                 "berlin",

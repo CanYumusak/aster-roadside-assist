@@ -1,22 +1,32 @@
 package com.aster.roadside.service
 
 import com.aster.roadside.data.FakeRoadsideData
-import com.aster.roadside.domain.AssistanceAction
 import com.aster.roadside.domain.AuthMode
 import com.aster.roadside.domain.AuthRisk
 import com.aster.roadside.domain.AuthVerificationResponse
+import com.aster.roadside.domain.AppendToolCallTraceRequest
+import com.aster.roadside.domain.BlockedAction
+import com.aster.roadside.domain.ClaimArtifacts
+import com.aster.roadside.domain.ClaimAuthentication
+import com.aster.roadside.domain.ClaimIdentity
 import com.aster.roadside.domain.ClaimSession
 import com.aster.roadside.domain.ClaimStatus
+import com.aster.roadside.domain.ClaimWorkflow
+import com.aster.roadside.domain.ClaimStage
 import com.aster.roadside.domain.CoverageDecision
 import com.aster.roadside.domain.CreateClaimRequest
 import com.aster.roadside.domain.Customer
 import com.aster.roadside.domain.IntakeFacts
+import com.aster.roadside.domain.LocationResolution
 import com.aster.roadside.domain.NextStepResponse
+import com.aster.roadside.domain.TranscriptTurn
+import com.aster.roadside.domain.ToolCallTrace
 import com.aster.roadside.domain.UpdateFactsRequest
 import com.aster.roadside.domain.VerifyKnownPinRequest
 import com.aster.roadside.domain.VerifyUnknownIdentityRequest
 import com.aster.roadside.domain.VerifiedCustomerDetails
 import com.aster.roadside.domain.VerifiedVehicleDetails
+import com.aster.roadside.domain.WorkflowAction
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
@@ -28,6 +38,7 @@ class ClaimService(
     private val stateMachine: RoadsideStateMachine,
     private val locationLookupService: LocationLookupService,
     private val incidentClassifier: IncidentClassifier,
+    private val coverageDecisionService: CoverageDecisionService,
 ) {
     private val claims = ConcurrentHashMap<String, ClaimSession>()
 
@@ -51,35 +62,114 @@ class ClaimService(
 
         val session =
             ClaimSession(
-                id = newCaseRef(),
-                callerPhoneNumber = request.callerPhoneNumber,
-                customerId = customer?.id,
-                scenarioId = request.scenarioId,
-                authMode = if (customer == null) AuthMode.FALLBACK_SIMULATED else AuthMode.KNOWN_NUMBER_SIMULATED,
-                authRisk = if (customer == null || callerIsPolicyholder == false) AuthRisk.ELEVATED else AuthRisk.STANDARD,
-                status = ClaimStatus.CREATED,
-                stage = evaluation.stage.label,
+                identity =
+                    ClaimIdentity(
+                        id = newCaseRef(),
+                        callerPhoneNumber = request.callerPhoneNumber,
+                        customerId = customer?.id,
+                        scenarioId = request.scenarioId,
+                    ),
+                authentication =
+                    ClaimAuthentication(
+                        authMode = if (customer == null) AuthMode.FALLBACK_SIMULATED else AuthMode.KNOWN_NUMBER_SIMULATED,
+                        authRisk = if (customer == null || callerIsPolicyholder == false) AuthRisk.ELEVATED else AuthRisk.STANDARD,
+                        pinChallengePositions = pinChallengePositions,
+                        pinVerificationAttempts = 0,
+                    ),
                 intakeFacts = facts,
-                missingFacts = evaluation.missingFacts,
-                blockedActions = evaluation.blockedActions,
-                pinChallengePositions = pinChallengePositions,
-                pinVerificationAttempts = 0,
-                locationResolution = locationResolution,
-                providerMatch = null,
-                stateEvaluation = evaluation,
-                coverageDecision = null,
-                assistanceAction = null,
-                smsPreview = null,
+                workflow =
+                    ClaimWorkflow.Intake(
+                        status = ClaimStatus.CREATED,
+                        stage = evaluation.stage,
+                        missingFacts = evaluation.missingFacts,
+                        blockedActions = evaluation.blockedActions,
+                        stateEvaluation = evaluation,
+                    ),
+                artifacts =
+                    ClaimArtifacts(
+                        locationResolution = locationResolution,
+                        providerMatch = null,
+                        coverageDecision = null,
+                        assistanceAction = null,
+                        smsPreview = null,
+                    ),
                 createdAt = now,
                 updatedAt = now,
+                auditEvents = listOf(caseCreatedEvent(now)),
             )
 
-        claims[session.id] = session
+        claims[session.identity.id] = session
         return session
     }
 
     fun getClaim(id: String): ClaimSession =
         claims[id] ?: throw NoSuchElementException("Claim not found: $id")
+
+    fun listClaims(): List<ClaimSession> =
+        claims.values.sortedByDescending { it.updatedAt }
+
+    fun appendTranscript(
+        id: String,
+        speaker: String,
+        text: String,
+    ): ClaimSession {
+        val existing = getClaim(id)
+        val normalizedSpeaker =
+            when (speaker.trim().lowercase()) {
+                "caller", "user", "customer" -> "caller"
+                else -> "agent"
+            }
+        val trimmedText = text.trim()
+        if (trimmedText.isBlank()) return existing
+
+        val lastTurn = existing.transcript.lastOrNull()
+        if (lastTurn?.speaker == normalizedSpeaker && lastTurn.text == trimmedText) {
+            return existing
+        }
+
+        val updated =
+            existing.copy(
+                transcript =
+                    existing.transcript +
+                        TranscriptTurn(
+                            speaker = normalizedSpeaker,
+                            text = trimmedText,
+                            createdAt = Instant.now(),
+                        ),
+                updatedAt = Instant.now(),
+            )
+        claims[id] = updated
+        return updated
+    }
+
+    fun appendToolCallTrace(
+        id: String,
+        request: AppendToolCallTraceRequest,
+    ): ClaimSession {
+        val existing = getClaim(id)
+        val toolName = request.toolName.trim()
+        val callId = request.callId.trim()
+        if (toolName.isBlank() || callId.isBlank()) return existing
+        if (existing.toolCalls.any { it.toolName == toolName && it.callId == callId }) return existing
+
+        val now = Instant.now()
+        val updated =
+            existing.copy(
+                toolCalls =
+                    existing.toolCalls +
+                        ToolCallTrace(
+                            toolName = toolName,
+                            callId = callId,
+                            status = request.status.ifBlank { "ok" },
+                            argumentsSummary = request.argumentsSummary,
+                            resultSummary = request.resultSummary,
+                            createdAt = now,
+                        ),
+                updatedAt = now,
+            )
+        claims[id] = updated
+        return updated
+    }
 
     fun updateFacts(
         id: String,
@@ -87,9 +177,22 @@ class ClaimService(
     ): ClaimSession {
         val existing = getClaim(id)
         val current = existing.intakeFacts
+        val existingLocation = existing.artifacts.locationResolution
         val requestedLocation = request.location?.trim()?.takeIf { it.isNotBlank() }
         val locationCandidate = requestedLocation ?: current.location
-        val locationResolution = locationLookupService.resolve(locationCandidate)
+        val locationEvidence =
+            LocationEvidence(
+                previousLocationText = current.location,
+                spokenLocation = locationCandidate,
+                callerConfirmedCandidate = request.locationVerifiedByCaller == true,
+                previousResolution = existingLocation,
+            )
+        val locationResolution =
+            if (requestedLocation == null && current.locationConfirmed && existingLocation?.dispatchable == true) {
+                existingLocation
+            } else {
+                locationLookupService.resolve(locationEvidence)
+            }
         val requestedIncident =
             request.incidentSummary?.trim()?.takeIf { it.isNotBlank() }
                 ?: request.issueType?.trim()?.takeIf { it.isNotBlank() }
@@ -102,7 +205,8 @@ class ClaimService(
             when {
                 request.locationConfirmed == false -> false
                 !dispatchableLocation -> false
-                request.locationVerifiedByCaller == true -> true
+                locationEvidence.callerConfirmedCandidate -> true
+                locationEvidence.callerClarifiedAmbiguousLocation && !locationRequiresConfirmation -> true
                 locationRequiresConfirmation -> preservedConfirmedLocation
                 request.locationConfirmed == true || requestedLocation != null -> true
                 else -> preservedConfirmedLocation
@@ -129,16 +233,55 @@ class ClaimService(
             )
         val evaluation = stateMachine.evaluate(updatedFacts, locationResolution)
 
+        val now = Instant.now()
+        val cancelled = evaluation.allowedAction == WorkflowAction.CANCELLED
         val updated =
             existing.copy(
-                status = ClaimStatus.IN_PROGRESS,
-                stage = evaluation.stage.label,
                 intakeFacts = updatedFacts,
-                missingFacts = evaluation.missingFacts,
-                blockedActions = evaluation.blockedActions,
-                locationResolution = locationResolution,
-                stateEvaluation = evaluation,
-                updatedAt = Instant.now(),
+                workflow =
+                    if (cancelled) {
+                        ClaimWorkflow.Cancelled(
+                            stage = ClaimStage.CLOSED,
+                            stateEvaluation = evaluation,
+                        )
+                    } else {
+                        ClaimWorkflow.Intake(
+                            status = ClaimStatus.IN_PROGRESS,
+                            stage = evaluation.stage,
+                            missingFacts = evaluation.missingFacts,
+                            blockedActions = evaluation.blockedActions,
+                            stateEvaluation = evaluation,
+                        )
+                    },
+                artifacts =
+                    existing.artifacts.copy(
+                        locationResolution = locationResolution,
+                        coverageDecision =
+                            if (cancelled) {
+                                CoverageDecision(
+                                    covered = false,
+                                    confidence = 0.0,
+                                    rationale = evaluation.reason,
+                                    escalationRequired = false,
+                                )
+                            } else {
+                                existing.artifacts.coverageDecision
+                            },
+                        assistanceAction = if (cancelled) null else existing.artifacts.assistanceAction,
+                        smsPreview = if (cancelled) null else existing.artifacts.smsPreview,
+                    ),
+                updatedAt = now,
+            ).withAuditEvents(
+                factAuditEvents(existing, updatedFacts, locationResolution) +
+                    if (cancelled) {
+                        listOf(
+                            AuditEventDraft("case.cancelled", "blocked", evaluation.reason),
+                            AuditEventDraft("sms.skipped", "skipped", "SMS skipped for security exit"),
+                        )
+                    } else {
+                        emptyList()
+                    },
+                now,
             )
 
         claims[id] = updated
@@ -147,15 +290,31 @@ class ClaimService(
 
     fun nextStep(id: String): NextStepResponse {
         val claim = getClaim(id)
-        if (claim.status == ClaimStatus.NEEDS_HUMAN_CALLBACK) {
+        if (claim.workflow.status == ClaimStatus.NEEDS_HUMAN_CALLBACK) {
             return NextStepResponse(
-                allowedAction = "human_callback",
+                allowedAction = WorkflowAction.HUMAN_CALLBACK,
                 question = null,
-                reason = claim.coverageDecision?.rationale ?: "Claim requires human callback.",
-                blockedActions = listOf("coverage_decision", "dispatch_simulation"),
+                reason = claim.artifacts.coverageDecision?.rationale ?: "Claim requires human callback.",
+                blockedActions =
+                    listOf(
+                        BlockedAction.COVERAGE_DECISION,
+                        BlockedAction.DISPATCH_SIMULATION,
+                    ),
             )
         }
-        val evaluation = claim.stateEvaluation ?: stateMachine.evaluate(claim.intakeFacts, claim.locationResolution)
+        if (claim.workflow.status == ClaimStatus.CANCELLED) {
+            return NextStepResponse(
+                allowedAction = WorkflowAction.CANCELLED,
+                question = null,
+                reason = claim.artifacts.coverageDecision?.rationale ?: "Claim was cancelled.",
+                blockedActions =
+                    listOf(
+                        BlockedAction.COVERAGE_DECISION,
+                        BlockedAction.DISPATCH_SIMULATION,
+                    ),
+            )
+        }
+        val evaluation = claim.workflow.stateEvaluation ?: stateMachine.evaluate(claim.intakeFacts, claim.artifacts.locationResolution)
         return NextStepResponse(
             allowedAction = evaluation.allowedAction,
             question = evaluation.question,
@@ -169,9 +328,13 @@ class ClaimService(
         request: VerifyKnownPinRequest,
     ): AuthVerificationResponse {
         val existing = getClaim(id)
-        val customer = existing.customerId?.let(::findCustomerById)
+        val customer = existing.identity.customerId?.let(::findCustomerById)
             ?: return verificationResponse(
-                claim = completeHumanCallback(existing, "Known-number PIN verification was requested, but no customer was matched."),
+                claim =
+                    routeToHumanCallback(
+                        existing,
+                        "Known-number PIN verification was requested, but no customer was matched.",
+                    ),
                 verified = false,
                 reason = "No customer matched this call.",
                 customer = null,
@@ -179,7 +342,7 @@ class ClaimService(
             )
 
         val positions =
-            existing.pinChallengePositions.ifEmpty {
+            existing.authentication.pinChallengePositions.ifEmpty {
                 pinChallengePositionsFor(customer)
             }
         val expectedDigits =
@@ -190,40 +353,42 @@ class ClaimService(
 
         val pinMatched = expectedDigits == providedDigits
         log.info(
-            "pin_verification claim={} customer={} positions={} expected='{}' firstDigit={} secondDigit={} provided='{}' matched={} attempt={}",
+            "pin_verification claim={} customer={} positions={} matched={} attempt={}",
             id,
             customer.id,
             positions,
-            expectedDigits,
-            request.firstDigit,
-            request.secondDigit,
-            providedDigits,
             pinMatched,
-            existing.pinVerificationAttempts + if (pinMatched) 0 else 1,
+            existing.authentication.pinVerificationAttempts + if (pinMatched) 0 else 1,
         )
 
         if (!pinMatched) {
-            val failedAttempts = existing.pinVerificationAttempts + 1
+            val failedAttempts = existing.authentication.pinVerificationAttempts + 1
             if (failedAttempts >= MAX_PIN_ATTEMPTS) {
                 val completed =
-                    completeHumanCallback(
-                        existing.copy(pinVerificationAttempts = failedAttempts),
+                    cancelForFailedVerification(
+                        existing.withPinAttempts(failedAttempts),
                         "PIN challenge failed after $MAX_PIN_ATTEMPTS attempts.",
                     )
                 return verificationResponse(
                     claim = completed,
                     verified = false,
-                    reason = "PIN challenge did not match after $MAX_PIN_ATTEMPTS attempts. Intake routed to human callback.",
+                    reason = "PIN challenge did not match after $MAX_PIN_ATTEMPTS attempts. Intake cancelled because the caller could not be identified.",
                     customer = customer,
                     positions = positions,
                     attemptsRemaining = 0,
                 )
             }
 
+            val now = Instant.now()
             val updated =
                 existing.copy(
-                    pinVerificationAttempts = failedAttempts,
-                    updatedAt = Instant.now(),
+                    authentication = existing.authentication.copy(pinVerificationAttempts = failedAttempts),
+                    updatedAt = now,
+                ).withAuditEvent(
+                    type = "auth.retry",
+                    status = "warn",
+                    label = "$failedAttempts PIN attempt(s)",
+                    timestamp = now,
                 )
             claims[id] = updated
             return verificationResponse(
@@ -242,17 +407,26 @@ class ClaimService(
                 safetyKnown = true,
                 safetySummary = existing.intakeFacts.safetySummary ?: "Safety verbally checked before authentication.",
             )
-        val evaluation = stateMachine.evaluate(facts, existing.locationResolution)
+        val evaluation = stateMachine.evaluate(facts, existing.artifacts.locationResolution)
+        val now = Instant.now()
         val updated =
             existing.copy(
-                status = ClaimStatus.IN_PROGRESS,
-                stage = evaluation.stage.label,
                 intakeFacts = facts,
-                missingFacts = evaluation.missingFacts,
-                blockedActions = evaluation.blockedActions,
-                pinVerificationAttempts = 0,
-                stateEvaluation = evaluation,
-                updatedAt = Instant.now(),
+                authentication = existing.authentication.copy(pinVerificationAttempts = 0),
+                workflow =
+                    ClaimWorkflow.Intake(
+                        status = ClaimStatus.IN_PROGRESS,
+                        stage = evaluation.stage,
+                        missingFacts = evaluation.missingFacts,
+                        blockedActions = evaluation.blockedActions,
+                        stateEvaluation = evaluation,
+                    ),
+                updatedAt = now,
+            ).withAuditEvent(
+                type = "auth.updated",
+                status = "ok",
+                label = "Identity verified",
+                timestamp = now,
             )
         claims[id] = updated
 
@@ -271,7 +445,7 @@ class ClaimService(
     ): AuthVerificationResponse {
         val existing = getClaim(id)
         val normalizedName = normalizeName(request.name)
-        val positions = existing.pinChallengePositions.ifEmpty { UNKNOWN_PIN_CHALLENGE_POSITIONS }
+        val positions = existing.authentication.pinChallengePositions.ifEmpty { UNKNOWN_PIN_CHALLENGE_POSITIONS }
         val identityMatchedCustomer =
             unknownNumberVerificationCustomers().firstOrNull {
                 normalizeName(it.name) == normalizedName &&
@@ -283,21 +457,17 @@ class ClaimService(
         val matchedCustomer = identityMatchedCustomer?.takeIf { pinMatched }
 
         log.info(
-            "unknown_identity_verification claim={} candidateCustomer={} positions={} expected='{}' firstDigit={} secondDigit={} provided='{}' identityMatched={} pinMatched={} attempt={}",
+            "unknown_identity_verification claim={} candidateCustomer={} positions={} identityMatched={} pinMatched={} attempt={}",
             id,
             identityMatchedCustomer?.id,
             positions,
-            expectedDigits,
-            request.firstDigit,
-            request.secondDigit,
-            providedDigits,
             identityMatchedCustomer != null,
             pinMatched,
-            existing.pinVerificationAttempts + if (matchedCustomer == null) 1 else 0,
+            existing.authentication.pinVerificationAttempts + if (matchedCustomer == null) 1 else 0,
         )
 
         if (matchedCustomer == null) {
-            val failedAttempts = existing.pinVerificationAttempts + 1
+            val failedAttempts = existing.authentication.pinVerificationAttempts + 1
             val failureReason =
                 if (identityMatchedCustomer == null) {
                     "Customer record was not found for that name and birthdate."
@@ -306,24 +476,30 @@ class ClaimService(
                 }
             if (failedAttempts >= MAX_PIN_ATTEMPTS) {
                 val completed =
-                    completeHumanCallback(
-                        existing.copy(pinVerificationAttempts = failedAttempts),
+                    cancelForFailedVerification(
+                        existing.withPinAttempts(failedAttempts),
                         "$failureReason Unknown-number verification failed after $MAX_PIN_ATTEMPTS attempts.",
                     )
                 return verificationResponse(
                     claim = completed,
                     verified = false,
-                    reason = "$failureReason Intake routed to human callback after $MAX_PIN_ATTEMPTS attempts.",
+                    reason = "$failureReason Intake cancelled after $MAX_PIN_ATTEMPTS attempts because the caller could not be identified.",
                     customer = null,
                     positions = positions,
                     attemptsRemaining = 0,
                 )
             }
 
+            val now = Instant.now()
             val updated =
                 existing.copy(
-                    pinVerificationAttempts = failedAttempts,
-                    updatedAt = Instant.now(),
+                    authentication = existing.authentication.copy(pinVerificationAttempts = failedAttempts),
+                    updatedAt = now,
+                ).withAuditEvent(
+                    type = "auth.retry",
+                    status = "warn",
+                    label = "$failedAttempts verification attempt(s)",
+                    timestamp = now,
                 )
             claims[id] = updated
             return verificationResponse(
@@ -350,20 +526,32 @@ class ClaimService(
             )
         val locationResolution = locationLookupService.resolve(facts.location)
         val evaluation = stateMachine.evaluate(facts, locationResolution)
+        val now = Instant.now()
         val updated =
             existing.copy(
-                customerId = matchedCustomer.id,
-                authRisk = AuthRisk.ELEVATED,
-                status = ClaimStatus.IN_PROGRESS,
-                stage = evaluation.stage.label,
+                identity = existing.identity.copy(customerId = matchedCustomer.id),
+                authentication =
+                    existing.authentication.copy(
+                        authRisk = AuthRisk.ELEVATED,
+                        pinChallengePositions = positions,
+                        pinVerificationAttempts = 0,
+                    ),
                 intakeFacts = facts,
-                missingFacts = evaluation.missingFacts,
-                blockedActions = evaluation.blockedActions,
-                pinChallengePositions = positions,
-                pinVerificationAttempts = 0,
-                locationResolution = locationResolution,
-                stateEvaluation = evaluation,
-                updatedAt = Instant.now(),
+                workflow =
+                    ClaimWorkflow.Intake(
+                        status = ClaimStatus.IN_PROGRESS,
+                        stage = evaluation.stage,
+                        missingFacts = evaluation.missingFacts,
+                        blockedActions = evaluation.blockedActions,
+                        stateEvaluation = evaluation,
+                    ),
+                artifacts = existing.artifacts.copy(locationResolution = locationResolution),
+                updatedAt = now,
+            ).withAuditEvent(
+                type = "auth.updated",
+                status = "ok",
+                label = "Identity verified",
+                timestamp = now,
             )
         claims[id] = updated
 
@@ -379,89 +567,30 @@ class ClaimService(
     fun finalizeClaim(id: String): ClaimSession {
         val existing = getClaim(id)
         val facts = existing.intakeFacts
-        val evaluation = stateMachine.evaluate(facts, existing.locationResolution)
+        val evaluation = stateMachine.evaluate(facts, existing.artifacts.locationResolution)
 
         if (facts.callerIsPolicyholder == false) {
-            return completeHumanCallback(existing, "Caller is not the policyholder.")
+            return routeToHumanCallback(existing, "Caller is not the policyholder.")
         }
 
-        if (evaluation.allowedAction != "coverage_decision") {
+        if (evaluation.allowedAction != WorkflowAction.COVERAGE_DECISION) {
             val updated =
                 existing.copy(
-                    stage = evaluation.stage.label,
-                    missingFacts = evaluation.missingFacts,
-                    blockedActions = evaluation.blockedActions,
-                    stateEvaluation = evaluation,
+                    workflow =
+                        ClaimWorkflow.Intake(
+                            status = ClaimStatus.IN_PROGRESS,
+                            stage = evaluation.stage,
+                            missingFacts = evaluation.missingFacts,
+                            blockedActions = evaluation.blockedActions,
+                            stateEvaluation = evaluation,
+                        ),
                     updatedAt = Instant.now(),
                 )
             claims[id] = updated
             return updated
         }
 
-        val issueType = facts.issueType
-            ?: return completeHumanCallback(existing, "Incident type was not clear enough for automated coverage assessment.")
-        if (issueRequiresHumanCallback(issueType)) {
-            return completeHumanCallback(existing, humanCallbackReasonForIssue(issueType))
-        }
-
-        val customer = existing.customerId?.let(::findCustomerById)
-        val vehicle =
-            customer
-                ?.vehicles
-                ?.firstOrNull { it.id == facts.selectedVehicleId }
-                ?: customer?.vehicles?.firstOrNull()
-        val policy = vehicle?.policyId?.let(::findPolicyById)
-            ?: return completeHumanCallback(existing, "Policy data was unavailable for the selected vehicle.")
-        val covered = policy.coveredEvents.contains(issueType)
-        val actionType = actionTypeForIssue(issueType)
-
-        if (!covered) {
-            val decision =
-                CoverageDecision(
-                    covered = false,
-                    confidence = 0.72,
-                    rationale = "${policy.name} does not automatically cover ${displayIssue(issueType)} in the prototype policy data.",
-                    escalationRequired = true,
-                )
-            val completed =
-                existing.copy(
-                    status = ClaimStatus.NOT_COVERED,
-                    stage = "SMS",
-                    coverageDecision = decision,
-                    assistanceAction = null,
-                    smsPreview = callbackSms(existing.id),
-                    updatedAt = Instant.now(),
-                )
-            claims[id] = completed
-            return completed
-        }
-
-        val decision =
-            CoverageDecision(
-                covered = true,
-                confidence = 0.91,
-                rationale = "${policy.name} covers ${displayIssue(issueType)} and no prototype exclusion was triggered.",
-                escalationRequired = false,
-            )
-        val providerMatch = locationLookupService.matchProvider(actionType, existing.locationResolution)
-        val action =
-            AssistanceAction(
-                actionType = actionType,
-                providerName = providerMatch.providerName,
-                etaMinutes = providerMatch.etaMinutes,
-                customerMessage = "Aster Roadside has assessed your case and arranged the next best assistance step.",
-            )
-        val completed =
-            existing.copy(
-                status = ClaimStatus.COMPLETED,
-                stage = "SMS",
-                coverageDecision = decision,
-                providerMatch = providerMatch,
-                assistanceAction = action,
-                smsPreview = dispatchSms(existing.id, action),
-                updatedAt = Instant.now(),
-            )
-
+        val completed = coverageDecisionService.finalizeCoverage(existing)
         claims[id] = completed
         return completed
     }
@@ -469,29 +598,111 @@ class ClaimService(
     fun finalizeHumanCallback(
         id: String,
         reason: String = "Caller was routed to human callback.",
-    ): ClaimSession = completeHumanCallback(getClaim(id), reason)
+    ): ClaimSession = routeToHumanCallback(getClaim(id), reason)
 
-    private fun completeHumanCallback(
-        existing: ClaimSession,
+    fun finalizeCancellation(
+        id: String,
+        reason: String = "Call cancelled.",
+    ): ClaimSession =
+        cancelClaim(
+            claim = getClaim(id),
+            reason = reason,
+            auditType = "case.cancelled",
+            smsSkippedLabel = "SMS skipped for cancelled call.",
+        )
+
+    private fun cancelForFailedVerification(
+        claim: ClaimSession,
+        reason: String,
+    ): ClaimSession =
+        cancelClaim(
+            claim = claim,
+            reason = reason,
+            auditType = "auth.cancelled",
+            smsSkippedLabel = "SMS skipped because identity verification failed.",
+        )
+
+    private fun cancelClaim(
+        claim: ClaimSession,
+        reason: String,
+        auditType: String,
+        smsSkippedLabel: String,
+    ): ClaimSession {
+        val now = Instant.now()
+        val completed =
+            claim.copy(
+                workflow =
+                    ClaimWorkflow.Cancelled(
+                        stage = ClaimStage.CLOSED,
+                        stateEvaluation = claim.workflow.stateEvaluation,
+                    ),
+                artifacts =
+                    claim.artifacts.copy(
+                        coverageDecision =
+                            CoverageDecision(
+                                covered = false,
+                                confidence = 0.0,
+                                rationale = reason,
+                                escalationRequired = false,
+                            ),
+                        assistanceAction = null,
+                        smsPreview = null,
+                    ),
+                updatedAt = now,
+            ).withAuditEvents(
+                listOf(
+                    AuditEventDraft(auditType, "blocked", reason),
+                    AuditEventDraft("sms.skipped", "skipped", smsSkippedLabel),
+                ),
+                now,
+            )
+        claims[claim.identity.id] = completed
+        return completed
+    }
+
+    private fun routeToHumanCallback(
+        claim: ClaimSession,
         reason: String,
     ): ClaimSession {
-        val completed =
-            existing.copy(
-                status = ClaimStatus.NEEDS_HUMAN_CALLBACK,
-                stage = "SMS",
-                coverageDecision =
-                    CoverageDecision(
-                        covered = false,
-                        confidence = 0.0,
-                        rationale = reason,
-                        escalationRequired = true,
-                    ),
-                assistanceAction = null,
-                smsPreview = if (isSafetyCancellation(reason)) safetyCallbackSms(existing.id) else callbackSms(existing.id),
-                updatedAt = Instant.now(),
-            )
-        claims[existing.id] = completed
+        val completed = coverageDecisionService.routeToHumanCallback(claim, reason)
+        claims[claim.identity.id] = completed
         return completed
+    }
+
+    private fun ClaimSession.withPinAttempts(attempts: Int) =
+        copy(authentication = authentication.copy(pinVerificationAttempts = attempts))
+
+    private fun factAuditEvents(
+        existing: ClaimSession,
+        updatedFacts: IntakeFacts,
+        locationResolution: LocationResolution?,
+    ): List<AuditEventDraft> {
+        val current = existing.intakeFacts
+        val events = mutableListOf<AuditEventDraft>()
+        if (updatedFacts.safetyKnown && !current.safetyKnown) {
+            events += AuditEventDraft("safety.checked", "ok", "Safety checked")
+        }
+        if (updatedFacts.vehicleConfirmed && !current.vehicleConfirmed) {
+            events += AuditEventDraft("fact.vehicle", "ok", "Vehicle confirmed")
+        }
+        if (
+            locationResolution != null &&
+            (updatedFacts.location != current.location ||
+                updatedFacts.locationConfirmed != current.locationConfirmed ||
+                locationResolution.formattedAddress != existing.artifacts.locationResolution?.formattedAddress ||
+                locationResolution.rationale != existing.artifacts.locationResolution?.rationale)
+        ) {
+            events +=
+                AuditEventDraft(
+                    type = "location.resolved",
+                    status = if (locationResolution.dispatchable) "ok" else "blocked",
+                    label = locationResolution.rationale,
+                )
+        }
+        if (updatedFacts.incidentKnown && !current.incidentKnown) {
+            events += AuditEventDraft("incident.classified", "ok", "Incident classified")
+        }
+        return events
     }
 
     private fun findCustomerByPhone(phone: String) =
@@ -502,9 +713,6 @@ class ClaimService(
     private fun findCustomerById(id: String) =
         FakeRoadsideData.customers.firstOrNull { it.id == id }
 
-    private fun findPolicyById(id: String) =
-        FakeRoadsideData.policies.firstOrNull { it.id == id }
-
     private fun unknownNumberVerificationCustomers() =
         FakeRoadsideData.customers.filter {
             it.demoLabel.equals("Unknown-number verification demo", ignoreCase = true)
@@ -512,38 +720,8 @@ class ClaimService(
 
     private fun classifyIncident(summary: String): IncidentClassification {
         val canonical = incidentClassifier.classify(summary)
-        return IncidentClassification(canonicalType = canonical, rawSummary = summary.trim())
+        return IncidentClassification(canonicalType = canonical)
     }
-
-    private fun issueRequiresHumanCallback(issueType: String) =
-        issueType in setOf("accident_with_injury", "third_party_caller", "ev_warning")
-
-    private fun humanCallbackReasonForIssue(issueType: String) =
-        when (issueType) {
-            "ev_warning" -> "The caller reported an EV warning light, which may involve high-voltage or battery safety risk, so the prototype routes this to a roadside specialist."
-            "accident_with_injury" -> "The caller reported a possible accident or injury, so the prototype routes this to a roadside specialist."
-            "third_party_caller" -> "The caller is not the policyholder, so the prototype routes this to a roadside specialist."
-            else -> "The reported incident requires a roadside specialist review."
-        }
-
-    private fun actionTypeForIssue(issueType: String) =
-        when (issueType) {
-            "flat_tire", "dead_battery", "minor_mechanical_fault" -> "repair_truck"
-            else -> "tow_truck"
-        }
-
-    private fun displayIssue(issueType: String) =
-        when (issueType) {
-            "flat_tire" -> "a flat tyre"
-            "dead_battery" -> "a dead battery"
-            "engine_failure" -> "engine failure"
-            "lost_keys" -> "lost keys"
-            "fuel_issue" -> "a fuel issue"
-            "ev_battery_depleted" -> "a depleted EV battery"
-            "charging_station_failure" -> "charging station failure"
-            "minor_mechanical_fault" -> "a minor mechanical fault"
-            else -> issueType.replace('_', ' ')
-        }
 
     private fun normalizePhone(phone: String) = phone.filter { it.isDigit() || it == '+' }
 
@@ -576,30 +754,35 @@ class ClaimService(
         reason: String,
         customer: Customer?,
         positions: List<Int>,
-        attemptsRemaining: Int = MAX_PIN_ATTEMPTS - claim.pinVerificationAttempts,
+        attemptsRemaining: Int = MAX_PIN_ATTEMPTS - claim.authentication.pinVerificationAttempts,
     ) = AuthVerificationResponse(
         verified = verified,
         reason = reason,
-        authRisk = claim.authRisk,
+        authRisk = claim.authentication.authRisk,
         policyholderName = customer?.name.takeIf { verified },
         customerDetails = customer?.takeIf { verified }?.toVerifiedDetails(),
         pinChallengePositions = positions,
         attemptsRemaining = attemptsRemaining.coerceAtLeast(0),
-        humanCallbackRequired = claim.status == ClaimStatus.NEEDS_HUMAN_CALLBACK,
+        humanCallbackRequired = claim.workflow.status == ClaimStatus.NEEDS_HUMAN_CALLBACK,
+        cancellationRequired = claim.workflow.status == ClaimStatus.CANCELLED,
         vehicleOptions =
             customer?.vehicles?.takeIf { verified }?.map {
                 "${it.year} ${it.make} ${it.model}, registration ${it.registration}"
             } ?: emptyList(),
         nextStep =
-            if (!verified && claim.status != ClaimStatus.NEEDS_HUMAN_CALLBACK) {
+            if (!verified && claim.workflow.status != ClaimStatus.NEEDS_HUMAN_CALLBACK && claim.workflow.status != ClaimStatus.CANCELLED) {
                 NextStepResponse(
-                    allowedAction = "retry_pin",
+                    allowedAction = WorkflowAction.RETRY_PIN,
                     question = "Please provide the requested PIN digits again.",
                     reason = reason,
-                    blockedActions = listOf("coverage_decision", "dispatch_simulation"),
+                    blockedActions =
+                        listOf(
+                            BlockedAction.COVERAGE_DECISION,
+                            BlockedAction.DISPATCH_SIMULATION,
+                        ),
                 )
             } else {
-                nextStep(claim.id)
+                nextStep(claim.identity.id)
             },
     )
 
@@ -634,24 +817,7 @@ class ClaimService(
 
     private fun newCaseRef() = "AST-${UUID.randomUUID().toString().take(8).uppercase()}"
 
-    private fun dispatchSms(
-        caseRef: String,
-        action: AssistanceAction,
-    ) = "Aster Roadside: ${action.providerName} is assigned for ${action.actionType.replace('_', ' ')}. ETA ${action.etaMinutes} min. Case ref: $caseRef."
-
-    private fun callbackSms(caseRef: String) =
-        "Aster Roadside: Your case has been sent to a roadside specialist. They will call you back as soon as one is available. Case ref: $caseRef. If you are in immediate danger, call emergency services."
-
-    private fun safetyCallbackSms(caseRef: String) =
-        "Aster Roadside: We ended the call so you can move to safety. Once you are away from traffic, call us back to continue your roadside request. Case ref: $caseRef. If you are in immediate danger, call emergency services."
-
-    private fun isSafetyCancellation(reason: String) =
-        reason.contains("safe place", ignoreCase = true) ||
-            reason.contains("safety risk", ignoreCase = true) ||
-            reason.contains("move to safety", ignoreCase = true)
-
     private data class IncidentClassification(
         val canonicalType: String?,
-        val rawSummary: String,
     )
 }

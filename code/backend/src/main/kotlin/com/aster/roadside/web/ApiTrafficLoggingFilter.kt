@@ -36,8 +36,8 @@ class ApiTrafficLoggingFilter : OncePerRequestFilter() {
                 request.requestURI,
                 wrappedResponse.status,
                 durationMs,
-                requestBody.redactForLog(),
-                responseBody.redactForLog(),
+                requestBody.toLogBody(request.requestURI),
+                responseBody.toLogBody(request.requestURI),
             )
             wrappedResponse.copyBodyToResponse()
         }
@@ -46,8 +46,13 @@ class ApiTrafficLoggingFilter : OncePerRequestFilter() {
     private fun ByteArray.toUtf8(): String =
         if (isEmpty()) "" else String(this, Charsets.UTF_8)
 
-    private fun String.redactForLog(): String =
-        this
+    private fun String.toLogBody(path: String): String {
+        if (isBlank()) return ""
+        if (path == "/api/customers") return "[customer list redacted]"
+        if (path == "/api/policies") return "[policy list omitted]"
+        if (path == "/api/scenarios") return "[scenario list omitted]"
+
+        return this
             .replace(Regex(""""roadsidePin"\s*:\s*"[^"]*"""")) {
                 """"roadsidePin":"[redacted]""""
             }
@@ -55,9 +60,11 @@ class ApiTrafficLoggingFilter : OncePerRequestFilter() {
                 """"pin":"[redacted]""""
             }
             .take(MAX_LOG_BODY_CHARS)
+            .let { if (length > MAX_LOG_BODY_CHARS) "$it...[truncated]" else it }
+    }
 
     private companion object {
-        const val MAX_LOG_BODY_CHARS = 4_000
+        const val MAX_LOG_BODY_CHARS = 1_500
         val log = LoggerFactory.getLogger(ApiTrafficLoggingFilter::class.java)
     }
 }

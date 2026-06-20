@@ -4,6 +4,9 @@ import type { ClaimSession } from "@/lib/backend-api";
 import type { Customer, Vehicle } from "@/lib/roadside-data";
 import { Button } from "@/components/ui/button";
 
+const SECURITY_EXIT_MESSAGE =
+  "If anyone may be injured or in immediate danger, call emergency services now. Move to a safe place if you can. We cannot continue roadside intake until everyone is safe.";
+
 type Props = {
   customer: Customer | null;
   vehicle: Vehicle | null;
@@ -17,29 +20,44 @@ export function SmsPreview({
   claim,
   onReset,
 }: Props) {
-  const cancelled = claim?.status === "NEEDS_HUMAN_CALLBACK" || claim?.status === "NOT_COVERED";
+  const status = claim?.workflow.status;
+  const humanCallback = status === "NEEDS_HUMAN_CALLBACK";
+  const backendCancelled = status === "CANCELLED";
+  const notCovered =
+    status === "NOT_COVERED" ||
+    (status === "COMPLETED" && claim?.artifacts.coverageDecision?.covered === false);
   const reason =
-    claim?.coverageDecision?.rationale ??
-    claim?.stateEvaluation?.reason ??
-    (cancelled ? "The case needs a human callback." : "The case was completed.");
+    claim?.artifacts.coverageDecision?.rationale ??
+    claim?.workflow.stateEvaluation?.reason ??
+    (backendCancelled
+      ? "Identity verification failed, so no roadside request was created."
+      : humanCallback
+        ? "The case needs a human callback."
+        : "The case was completed.");
+  const securityExit = (humanCallback || backendCancelled) && isSecurityExit(reason);
+  const authCancelled = backendCancelled && !securityExit;
+  const cancelled = humanCallback || backendCancelled;
+  const safetyStop = cancelled && (securityExit || isSafetyStop(reason));
   const smsText =
-    claim?.smsPreview ??
-    (cancelled
-      ? `Aster Roadside: We've asked a roadside specialist to call you back as soon as one is available. Case ref: ${claim?.id ?? "pending"}.`
-      : `Aster Roadside: We have your roadside request and will text the next step. Case ref: ${claim?.id ?? "pending"}.`);
+    notCovered
+      ? notCoveredSms(claim, reason)
+      : claim?.artifacts.smsPreview ??
+        fallbackSms(claim, safetyStop, humanCallback);
   const address =
-    claim?.locationResolution?.formattedAddress ??
-    claim?.locationResolution?.rawLocation ??
+    claim?.artifacts.locationResolution?.formattedAddress ??
+    claim?.artifacts.locationResolution?.rawLocation ??
     claim?.intakeFacts.location ??
     "Location not captured";
-  const resolvedArea = claim?.locationResolution?.normalizedArea;
-  const mapsUri = claim?.locationResolution?.googleMapsUri;
-  const backendVehicle =
-    customer?.vehicles.find((candidate) => candidate.id === claim?.intakeFacts.selectedVehicleId) ??
-    vehicle;
+  const resolvedArea = claim?.artifacts.locationResolution?.normalizedArea;
+  const mapsUri = claim?.artifacts.locationResolution?.googleMapsUri;
+  const vehicleConfirmed = claim?.intakeFacts.vehicleConfirmed === true;
+  const backendVehicle = vehicleConfirmed
+    ? customer?.vehicles.find((candidate) => candidate.id === claim?.intakeFacts.selectedVehicleId) ??
+      vehicle
+    : null;
   const vehicleLabel = backendVehicle
     ? `${backendVehicle.year} ${backendVehicle.make} ${backendVehicle.model} · ${backendVehicle.reg}`
-    : claim?.intakeFacts.selectedVehicleId ?? "Vehicle to confirm";
+    : null;
   const incidentSummary =
     formatIncident(
       claim?.intakeFacts.incidentSummary ??
@@ -62,7 +80,7 @@ export function SmsPreview({
               <CheckCircle2 className="h-4 w-4 text-[color:var(--success)]" />
             )}
             <h2 className="text-[13px] font-medium tracking-tight">
-              {cancelled ? "Cancelled · human callback" : "Resolution summary"}
+              {safetyStop ? "Security exit" : authCancelled ? "Cancelled · verification failed" : cancelled ? "Cancelled · human callback" : "Resolution summary"}
             </h2>
           </div>
           <Button onClick={onReset} variant="ghost" size="sm" className="gap-1.5">
@@ -73,21 +91,29 @@ export function SmsPreview({
 
       <div className="flex flex-1 items-start justify-center overflow-y-auto px-8 py-10">
         <div className="w-full max-w-2xl fade-up">
-          <div className="mb-7 rounded-md border border-border bg-card">
-            <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-              <MessageSquare className="h-4 w-4 text-primary" />
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                Simulated SMS
+          {smsText ? (
+            <div className="mb-7 rounded-md border border-border bg-card">
+              <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                <MessageSquare className="h-4 w-4 text-primary" />
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Simulated SMS
+                </div>
+              </div>
+              <div className="px-4 py-3 text-[13.5px] leading-relaxed">
+                {smsText}
               </div>
             </div>
-            <div className="px-4 py-3 text-[13.5px] leading-relaxed">
-              {smsText}
+          ) : (
+            <div className="mb-7 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-[13.5px] leading-relaxed text-destructive">
+              {authCancelled ? "No simulated SMS sent. Identity verification failed, so the roadside request was cancelled." : SECURITY_EXIT_MESSAGE}
             </div>
-          </div>
+          )}
 
           <div className="grid gap-3">
-            <SummaryRow label="Status" value={cancelled ? "Cancelled" : formatStatus(claim?.status)} />
-            {cancelled && <SummaryRow label="Why cancelled" value={reason} />}
+            <SummaryRow label="Status" value={safetyStop ? "Security exit" : cancelled ? "Cancelled" : "Completed"} />
+            {cancelled && <SummaryRow label={safetyStop ? "Why stopped" : "Why cancelled"} value={reason} />}
+            {!cancelled && notCovered && <SummaryRow label="Dispatch decision" value="No dispatch" />}
+            {!cancelled && notCovered && <SummaryRow label="Reason" value={reason} />}
             <SummaryRow label="Resolved address" value={resolvedArea ? `${address} · ${resolvedArea}` : address} />
             {mapsUri && (
               <SummaryRow
@@ -106,13 +132,13 @@ export function SmsPreview({
             )}
             <SummaryRow label="Name" value={customer?.name ?? "Unknown caller"} />
             <SummaryRow label="Authentication" value={authSummary} />
-            <SummaryRow label="Car" value={vehicleLabel} />
+            {vehicleLabel && <SummaryRow label="Car" value={vehicleLabel} />}
             <SummaryRow label="Incident" value={incidentSummary} />
             <SummaryRow label="Safety" value={safetySummary} />
-            {claim?.assistanceAction && (
+            {claim?.artifacts.assistanceAction && (
               <SummaryRow
                 label="Backend action"
-                value={`${claim.assistanceAction.actionType.replace(/_/g, " ")} · ${claim.assistanceAction.providerName}`}
+                value={`${claim.artifacts.assistanceAction.actionType.replace(/_/g, " ")} · ${claim.artifacts.assistanceAction.providerName}`}
               />
             )}
           </div>
@@ -122,26 +148,72 @@ export function SmsPreview({
   );
 }
 
+function isSafetyStop(reason: string) {
+  const normalized = reason.toLowerCase();
+  return (
+    normalized.includes("safe place") ||
+    normalized.includes("not safe") ||
+    normalized.includes("unsafe") ||
+    normalized.includes("move to safety") ||
+    normalized.includes("away from traffic") ||
+    normalized.includes("middle of the road") ||
+    normalized.includes("in traffic")
+  );
+}
+
+function isSecurityExit(reason: string) {
+  const normalized = reason.toLowerCase();
+  return (
+    isSafetyStop(reason) ||
+    normalized.includes("security exit") ||
+    normalized.includes("immediate safety") ||
+    normalized.includes("immediate danger") ||
+    normalized.includes("emergency services") ||
+    normalized.includes("injury") ||
+    normalized.includes("injured") ||
+    normalized.includes("hurt") ||
+    normalized.includes("smoke") ||
+    normalized.includes("fire") ||
+    normalized.includes("flood") ||
+    normalized.includes("ev battery") ||
+    normalized.includes("high-voltage")
+  );
+}
+
 function formatAuthSummary(claim: ClaimSession | null) {
   if (!claim) return "Not available";
   if (!claim.intakeFacts.identityConfirmed) {
-    return claim.authMode === "FALLBACK_SIMULATED"
+    return claim.authentication.authMode === "FALLBACK_SIMULATED"
       ? "Unknown number; full verification failed or was not completed"
       : "Known policyholder number; PIN verification failed or was not completed";
   }
-  if (claim.authMode === "FALLBACK_SIMULATED") {
+  if (claim.authentication.authMode === "FALLBACK_SIMULATED") {
     return "Unknown number; verified with full name, birthdate, and requested PIN digits";
   }
   return "Known policyholder number; verified with requested PIN digits";
 }
 
-function formatStatus(status?: string | null) {
-  if (!status) return "Completed";
-  return status
-    .toLowerCase()
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+function notCoveredSms(
+  claim: ClaimSession | null,
+  reason: string,
+) {
+  const customerReason = reason
+    .replace(" in the prototype policy data", "")
+    .replace("does not automatically cover", "does not cover")
+    .replace(/\.$/, "");
+  return `Aster Roadside: We assessed your roadside request, but it is not covered by your policy. ${customerReason}. No truck has been dispatched. Case ref: ${claim?.identity.id ?? "pending"}.`;
+}
+
+function fallbackSms(
+  claim: ClaimSession | null,
+  safetyStop: boolean,
+  humanCallback: boolean,
+) {
+  if (safetyStop) return null;
+  if (humanCallback) {
+    return `Aster Roadside: We've asked a roadside specialist to call you back as soon as one is available. Case ref: ${claim?.identity.id ?? "pending"}.`;
+  }
+  return `Aster Roadside: We have your roadside request and will text the next step. Case ref: ${claim?.identity.id ?? "pending"}.`;
 }
 
 function formatIncident(value: string) {

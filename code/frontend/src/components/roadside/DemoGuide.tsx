@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { CUSTOMERS, SCENARIOS, type Customer, type Stage } from "@/lib/roadside-data";
+import { CUSTOMERS, SCENARIOS, type Customer, type Scenario, type Stage } from "@/lib/roadside-data";
 import { Car, MapPin, Phone, KeyRound, Calendar, User } from "lucide-react";
 
 const FALLBACK_UNKNOWN_DEMO_CUSTOMER: Customer = {
@@ -28,6 +28,7 @@ const FALLBACK_UNKNOWN_DEMO_CUSTOMER: Customer = {
 
 type Props = {
   phone: string;
+  scenarios: Scenario[];
   customers: Customer[];
   customer: Customer | null;
   selectedVehicleIndex: number;
@@ -39,6 +40,7 @@ type Props = {
 
 export function DemoGuide({
   phone,
+  scenarios,
   customers,
   customer,
   selectedVehicleIndex,
@@ -47,9 +49,10 @@ export function DemoGuide({
   setSelectedScenarioId,
   currentStage,
 }: Props) {
+  const availableScenarios = scenarios.length > 0 ? scenarios : SCENARIOS;
   const scenario = useMemo(
-    () => SCENARIOS.find((s) => s.id === selectedScenarioId) ?? SCENARIOS[0],
-    [selectedScenarioId],
+    () => availableScenarios.find((s) => s.id === selectedScenarioId) ?? availableScenarios[0] ?? SCENARIOS[0],
+    [availableScenarios, selectedScenarioId],
   );
   const isUnknown = !customer;
   const unknownDemoCustomer = useMemo(
@@ -95,21 +98,38 @@ export function DemoGuide({
               onChange={(e) => setSelectedScenarioId(e.target.value)}
               className="mt-1.5 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
-              {SCENARIOS.map((s) => (
+              {availableScenarios.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.title}
+                  {s.title} — {scenarioOutcomeLabel(s)}
                 </option>
               ))}
             </select>
+            <div className="mt-1.5 text-[11px] text-muted-foreground">
+              Expected outcome: {scenarioOutcomeLabel(scenario)}
+            </div>
           </div>
 
           <ScriptLine label="Incident" text={scenario.incidentPhrase} stage="Incident" active={currentStage === "Incident"} />
-          <ScriptLine label="Safety" text={scenario.safetyPhrase} stage="Safety" active={currentStage === "Safety"} />
           <ScriptLine label="Location" text={scenario.locationPhrase} stage="Location" active={currentStage === "Location"} />
         </div>
       </div>
     </aside>
   );
+}
+
+function scenarioOutcomeLabel(scenario: Scenario) {
+  switch (scenario.coverage) {
+    case "Covered":
+      return "Covered";
+    case "Covered with excess":
+      return "Covered + excess";
+    case "Not covered":
+      return "Not covered";
+    case "Human review required":
+      return "Not covered";
+    case "Security exit":
+      return "Security exit";
+  }
 }
 
 function CallerContext({
@@ -211,6 +231,9 @@ function CustomerGuide({
                     <div className="text-[11px] text-muted-foreground">
                       {v.year} · {v.fuel}
                     </div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      Coverage: {coverageLabelForVehicle(v.policyName, customer.tier)}
+                    </div>
                   </div>
                   <span className="font-mono text-[11px] text-muted-foreground">{v.reg}</span>
                 </button>
@@ -226,6 +249,10 @@ function CustomerGuide({
       </div>
     </div>
   );
+}
+
+function coverageLabelForVehicle(policyName: string | undefined, tier: Customer["tier"]) {
+  return policyName ?? `${tier} cover`;
 }
 
 function Field({

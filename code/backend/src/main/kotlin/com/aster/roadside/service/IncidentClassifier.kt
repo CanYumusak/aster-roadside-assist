@@ -6,13 +6,25 @@ import com.openai.client.okhttp.OpenAIOkHttpClient
 import com.openai.models.ChatModel
 import com.openai.models.chat.completions.ChatCompletionCreateParams
 import org.slf4j.LoggerFactory
+import org.springframework.core.env.Environment
 import org.springframework.stereotype.Service
 
 @Service
-class IncidentClassifier {
-    private val model = System.getenv("OPENAI_INCIDENT_MODEL")?.takeIf { it.isNotBlank() } ?: "gpt-5.4-nano"
+class IncidentClassifier(
+    private val environment: Environment,
+) {
+    private val model =
+        environment.getProperty("OPENAI_INCIDENT_MODEL")
+            ?.takeIf { it.isNotBlank() }
+            ?: environment.getProperty("openai.incident-model")
+                ?.takeIf { it.isNotBlank() }
+            ?: "gpt-5.4-nano"
     private val client: OpenAIClient? =
-        System.getenv("OPENAI_API_KEY")
+        (
+            environment.getProperty("OPENAI_API_KEY")
+                ?: environment.getProperty("openai.api-key")
+                ?: System.getenv("OPENAI_API_KEY")
+        )
             ?.takeIf { it.isNotBlank() }
             ?.let { OpenAIOkHttpClient.builder().apiKey(it).build() }
 

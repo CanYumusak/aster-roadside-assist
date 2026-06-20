@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { STAGES, type CallState, type Stage } from "@/lib/roadside-data";
+import { type CallState } from "@/lib/roadside-data";
 import { Phone, PhoneCall, PhoneOff, ChevronRight, Loader2, Mic, Volume2, CheckCircle2, AlertOctagon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -7,7 +7,6 @@ export type VoiceConnectionStatus = "idle" | "connecting" | "connected" | "error
 
 type Props = {
   callState: CallState;
-  stageIndex: number;
   onStart: () => void;
   onEnd: () => void;
   onNext: () => void;
@@ -26,11 +25,11 @@ const STATE_COPY: Record<CallState, { label: string; sub: string }> = {
   Speaking: { label: "Speaking", sub: "Agent is responding" },
   Completed: { label: "Completed", sub: "Call resolved, SMS sent" },
   Escalated: { label: "Escalated", sub: "Routed to human handler" },
+  SecurityExit: { label: "Security exit", sub: "Automated intake stopped for safety" },
 };
 
 export function CallSurface({
   callState,
-  stageIndex,
   onStart,
   onEnd,
   onNext,
@@ -40,20 +39,15 @@ export function CallSurface({
   voiceStatus,
   voiceError,
 }: Props) {
-  const currentStage: Stage | null = stageIndex >= 0 ? STAGES[stageIndex] : null;
   const isLive =
     (voiceStatus === "connected" || voiceStatus === "connecting") &&
     callState !== "Ready" &&
     callState !== "Completed" &&
-    callState !== "Escalated";
+    callState !== "Escalated" &&
+    callState !== "SecurityExit";
 
   return (
     <div className="flex h-full flex-col">
-      {/* Stage rail */}
-      <div className="border-b border-border bg-surface px-8 py-3">
-        <StageRail stageIndex={stageIndex} callState={callState} />
-      </div>
-
       {/* Call card */}
       <div className="flex flex-1 items-center justify-center px-8 py-10">
         <div className="w-full max-w-xl rounded-xl border border-border bg-card">
@@ -67,7 +61,7 @@ export function CallSurface({
             </div>
             <div className="text-right">
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                {authRisk === "standard" ? "Known policyholder number" : "Unknown number"}
+                {authRisk === "standard" ? "Phone match" : "Full verification"}
               </div>
               <div className="mt-0.5 text-sm font-medium">{customerName}</div>
             </div>
@@ -76,14 +70,14 @@ export function CallSurface({
           {/* Voice surface */}
           <div className="px-6 py-10">
             <div className="flex flex-col items-center gap-6">
-              <StateBadge state={callState} authRisk={authRisk} />
+              <StateBadge state={callState} />
               <Waveform active={isLive} state={callState} />
               <div className="text-center">
                 <div className="text-base font-medium tracking-tight">
                   {STATE_COPY[callState].label}
                 </div>
                 <div className="mt-0.5 text-[13px] text-muted-foreground">
-                  {currentStage ? `Stage · ${currentStage}` : STATE_COPY[callState].sub}
+                  {STATE_COPY[callState].sub}
                 </div>
                 <VoiceStatus status={voiceStatus} error={voiceError} />
               </div>
@@ -104,7 +98,7 @@ export function CallSurface({
             <Button
               onClick={onNext}
               variant="secondary"
-              disabled={callState === "Ready" || callState === "Completed" || callState === "Escalated"}
+              disabled={callState === "Ready" || callState === "Completed" || callState === "Escalated" || callState === "SecurityExit"}
               className="gap-2"
             >
               Next step <ChevronRight className="h-4 w-4" />
@@ -146,41 +140,7 @@ function VoiceStatus({
   );
 }
 
-function StageRail({ stageIndex, callState }: { stageIndex: number; callState: CallState }) {
-  return (
-    <ol className="flex items-center gap-1 overflow-x-auto">
-      {STAGES.map((stage, i) => {
-        const done = i < stageIndex || callState === "Completed" || callState === "Escalated";
-        const active = i === stageIndex && callState !== "Completed" && callState !== "Escalated";
-        return (
-          <li key={stage} className="flex items-center gap-1">
-            <div
-              className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors ${
-                active
-                  ? "bg-primary-soft text-primary"
-                  : done
-                  ? "text-foreground"
-                  : "text-muted-foreground"
-              }`}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  active ? "bg-primary pulse-dot" : done ? "bg-primary" : "bg-border-strong"
-                }`}
-              />
-              {stage}
-            </div>
-            {i < STAGES.length - 1 && (
-              <span className="text-border-strong">·</span>
-            )}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-function StateBadge({ state, authRisk }: { state: CallState; authRisk: "standard" | "elevated" }) {
+function StateBadge({ state }: { state: CallState }) {
   const map = {
     Ready: { icon: Phone, cls: "text-muted-foreground border-border bg-background" },
     Ringing: { icon: PhoneCall, cls: "text-primary border-primary/30 bg-primary-soft" },
@@ -189,20 +149,14 @@ function StateBadge({ state, authRisk }: { state: CallState; authRisk: "standard
     Speaking: { icon: Volume2, cls: "text-primary border-primary/30 bg-primary-soft" },
     Completed: { icon: CheckCircle2, cls: "text-[color:var(--success)] border-[color:var(--success)]/30 bg-[color:var(--success)]/10" },
     Escalated: { icon: AlertOctagon, cls: "text-destructive border-destructive/30 bg-destructive/10" },
+    SecurityExit: { icon: AlertOctagon, cls: "text-destructive border-destructive/30 bg-destructive/10" },
   } as const;
   const Icon = map[state].icon;
   const spin = state === "Thinking";
   return (
-    <div className="flex items-center gap-2">
-      <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium ${map[state].cls}`}>
-        <Icon className={`h-3 w-3 ${spin ? "animate-spin" : ""}`} />
-        {state}
-      </div>
-      {authRisk === "elevated" && (
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-1 text-[12px] font-medium text-[color:oklch(0.5_0.13_75)]">
-          Auth risk: elevated
-        </div>
-      )}
+    <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium ${map[state].cls}`}>
+      <Icon className={`h-3 w-3 ${spin ? "animate-spin" : ""}`} />
+      {state}
     </div>
   );
 }

@@ -15,8 +15,8 @@ This document captures the insurer-facing assumptions and decisions needed to mo
 - A right-side demo guide can show the presenter what to say: name, birthdate, requested PIN digits, known phone number, vehicle options, policy tier, and suggested incident details. These are all hardcoded into the client and not dynamic from the backend. 
 - Caller lookup is simulated by entered phone number. (dropdown)
 - Known-number flow explicitly tells the caller that the inbound number is recognized as a known policyholder number, then asks for PIN digits; a mismatch discards the intake and routes to human callback.
-- Unknown-number verification uses only name, birthdate, and requested PIN digits inside the voice call, then marks the session as elevated risk in the operator view.
-- No real SMS is sent; customer notifications are rendered as fake SMS in the UI.
+- Unknown-number verification uses only name, birthdate, and requested PIN digits inside the voice call, then shows the auth method as full verification in the operator view.
+- No real SMS is sent; ordinary customer notifications are rendered as fake SMS in the UI. Unsafe safety-stop exits do not generate a simulated SMS.
 - Coverage and provider decisions are based on synthetic policy and provider data.
 
 ## Demo UI Contract
@@ -63,6 +63,18 @@ Production options to discuss with the insurer:
 - Consider Deepgram STT + separate LLM + TTS if compliance, transcript observability, and vendor flexibility become dominant.
 - Keep the backend stable so the voice provider can be changed later.
 
+## Phone Line Integration
+
+The prototype simulates a phone call in the browser. Production must connect the voice agent to a real inbound phone line.
+
+Client decisions needed:
+
+- Should calls enter through the insurer's existing contact-center platform, SIP trunk, or a new provider such as Twilio / CCaaS?
+- Who owns caller ID normalization, withheld-number handling, call routing, queueing, and human transfer?
+- Can the production stack stream call audio to the realtime voice layer with acceptable latency?
+- What is the fallback path if the AI service, telephony stream, or backend is unavailable?
+- What call recording, consent, retention, and compliance requirements apply?
+
 ## Customer Lookup
 
 Expected prototype flow:
@@ -75,7 +87,7 @@ Expected prototype flow:
 6. If multiple vehicles are on the policy, the agent asks which vehicle they are with.
 7. If no customer is found, the agent verifies name, birthdate, and requested PIN digits.
 8. If name, birthdate, or PIN mismatches, the intake is discarded and the call routes to human callback.
-9. Successful unknown-number verification is still shown as an elevated-risk flag in the operator view.
+9. Successful unknown-number verification is shown as the full-verification auth method in the operator view.
 10. If the caller says they are not the policyholder, the prototype gathers safety and incident basics, then ends in human callback.
 
 Production questions for the insurer:
@@ -95,7 +107,7 @@ Prototype behavior:
 - Known-number caller PIN mismatch, or unknown-number name, birthdate, or PIN digit mismatch, discards the intake and routes to human callback.
 - Accept the challenge when the selected demo credentials match.
 - Mark the claim session as `authMode: "known_number_simulated"` or `authMode: "fallback_simulated"`.
-- Mark unknown-number fallback sessions with `authRisk: "elevated"` for the operator-observability surface.
+- Mark unknown-number fallback sessions with an auth method such as `full_verification_simulated` for the operator-observability surface. Use specific attention flags, such as `unknown_number` or `auth_retry`, only when they explain an action or review need.
 
 Production options:
 

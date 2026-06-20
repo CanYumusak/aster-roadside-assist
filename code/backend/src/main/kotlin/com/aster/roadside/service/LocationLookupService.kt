@@ -1,5 +1,6 @@
 package com.aster.roadside.service
 
+import com.aster.roadside.domain.AssistanceActionType
 import com.aster.roadside.domain.LocationResolution
 import com.aster.roadside.domain.ProviderMatch
 import org.springframework.stereotype.Service
@@ -8,18 +9,32 @@ import org.springframework.stereotype.Service
 class LocationLookupService(
     private val googleMapsLocationClient: GoogleMapsLocationClient,
 ) {
-    fun resolve(rawLocation: String?): LocationResolution? {
+    fun resolve(evidence: LocationEvidence): LocationResolution? {
+        if (evidence.spokenLocation.isNullOrBlank()) return evidence.previousResolution
+        val resolutionInput = evidence.toResolutionInput()
+        return resolve(
+            rawLocation = resolutionInput.query,
+            callerConfirmedCandidate = resolutionInput.callerConfirmedCandidate,
+            acceptSingleMatchWithoutConfirmation = resolutionInput.acceptSingleMatchWithoutConfirmation,
+        )
+    }
+
+    fun resolve(
+        rawLocation: String?,
+        callerConfirmedCandidate: Boolean = false,
+        acceptSingleMatchWithoutConfirmation: Boolean = false,
+    ): LocationResolution? {
         val value = rawLocation?.trim().orEmpty()
         if (value.isBlank()) return null
 
         googleMapsLocationClient.resolve(value)?.let { googleResult ->
-            if (googleResult.ambiguous) {
+            if (googleResult.ambiguous && !callerConfirmedCandidate) {
                 return LocationResolution(
                     rawLocation = value,
                     normalizedArea = "Multiple Google Maps matches",
                     dispatchable = false,
                     confidence = 0.58,
-                    rationale = "Google Places returned multiple possible matches. Ask for a street name, postcode, nearby junction, or another landmark.",
+                    rationale = "Google Places returned multiple possible matches. Ask the caller to confirm a candidate, or describe a nearby road, junction, shop, landmark, or rough area.",
                     candidateAddresses = googleResult.candidateAddresses,
                     source = "google_places_text_search",
                 )
@@ -29,8 +44,15 @@ class LocationLookupService(
                 rawLocation = value,
                 normalizedArea = googleResult.normalizedArea,
                 dispatchable = true,
-                confidence = 0.92,
-                rationale = "Resolved to a UK dispatch location with Google Places Text Search.",
+                confidence = if (callerConfirmedCandidate || acceptSingleMatchWithoutConfirmation) 0.9 else 0.92,
+                rationale =
+                    if (callerConfirmedCandidate) {
+                        "Caller selected or confirmed a Google Places candidate for dispatch."
+                    } else if (acceptSingleMatchWithoutConfirmation) {
+                        "Caller clarified an ambiguous location and Google Places returned a single dispatchable match."
+                    } else {
+                        "Resolved to a UK dispatch location with Google Places Text Search."
+                    },
                 formattedAddress = googleResult.formattedAddress,
                 latitude = googleResult.latitude,
                 longitude = googleResult.longitude,
@@ -38,10 +60,11 @@ class LocationLookupService(
                 placeId = googleResult.placeId,
                 candidateAddresses = googleResult.candidateAddresses,
                 source = "google_places_text_search",
-                requiresCallerConfirmation = true,
+                requiresCallerConfirmation = !callerConfirmedCandidate && !acceptSingleMatchWithoutConfirmation,
             )
         }
 
+        val postcode = UK_POSTCODE_OR_OUTWARD.find(value)?.value?.uppercase()
         val normalizedArea =
             when {
                 value.contains("m4", ignoreCase = true) || value.contains("reading", ignoreCase = true) -> "M4 / Reading"
@@ -49,15 +72,16 @@ class LocationLookupService(
                 value.contains("bristol", ignoreCase = true) || value.contains("bs8", ignoreCase = true) -> "Bristol"
                 value.contains("leeds", ignoreCase = true) || value.contains("ls1", ignoreCase = true) -> "Leeds"
                 value.contains("clapham", ignoreCase = true) || value.contains("sw11", ignoreCase = true) -> "South West London"
+                value.contains("beaconsfield", ignoreCase = true) || value.contains("hp9", ignoreCase = true) -> "Beaconsfield"
+                value.contains("cambridge", ignoreCase = true) || value.contains("cb1", ignoreCase = true) -> "Cambridge"
+                value.contains("brighton", ignoreCase = true) || value.contains("bn2", ignoreCase = true) -> "Brighton"
+                value.contains("stafford", ignoreCase = true) || value.contains("st15", ignoreCase = true) -> "Stafford"
+                value.contains("stevenage", ignoreCase = true) || value.contains("sg1", ignoreCase = true) -> "Stevenage"
+                postcode != null -> "Postcode $postcode"
                 else -> "Unmapped spoken location"
             }
 
-        val dispatchable =
-            normalizedArea != "Unmapped spoken location" ||
-                UK_POSTCODE_OR_OUTWARD.containsMatchIn(value) ||
-                ROAD_NUMBER.containsMatchIn(value) ||
-                NAMED_ROAD.containsMatchIn(value) ||
-                NUMBERED_JUNCTION_OR_SERVICES.containsMatchIn(value)
+        val dispatchable = normalizedArea != "Unmapped spoken location"
 
         return LocationResolution(
             rawLocation = value,
@@ -65,33 +89,33 @@ class LocationLookupService(
             dispatchable = dispatchable,
             confidence = if (dispatchable) 0.84 else 0.42,
             rationale = if (dispatchable) {
-                "Spoken location contains enough road, area, or postcode detail for prototype dispatch lookup."
+                "Spoken location contains enough road, area, or landmark detail for prototype dispatch lookup."
             } else {
-                "Location needs a road, junction, landmark, service area, or postcode before dispatch simulation."
+                "Location needs a nearby road, junction, service area, shop, landmark, or rough area before dispatch simulation."
             },
             source = "synthetic",
         )
     }
 
     fun matchProvider(
-        actionType: String,
+        actionType: AssistanceActionType,
         locationResolution: LocationResolution?,
     ): ProviderMatch {
         val area = locationResolution?.normalizedArea.orEmpty()
         val providerName =
             when {
-                actionType == "tow_truck" && area.contains("M4") -> "National Highway Recovery"
-                actionType == "tow_truck" -> "Aster Recovery Network"
-                actionType == "repair_truck" && area.contains("London") -> "Westline Mobile Repair"
-                actionType == "repair_truck" -> "Aster Mobile Technician"
+                actionType == AssistanceActionType.TOW_TRUCK && area.contains("M4") -> "National Highway Recovery"
+                actionType == AssistanceActionType.TOW_TRUCK -> "Aster Recovery Network"
+                actionType == AssistanceActionType.REPAIR_TRUCK && area.contains("London") -> "Westline Mobile Repair"
+                actionType == AssistanceActionType.REPAIR_TRUCK -> "Aster Mobile Technician"
                 else -> "Aster Specialist Team"
             }
 
         val eta =
             when {
-                actionType == "tow_truck" && area.contains("M4") -> 42
-                actionType == "tow_truck" -> 48
-                actionType == "repair_truck" -> 35
+                actionType == AssistanceActionType.TOW_TRUCK && area.contains("M4") -> 42
+                actionType == AssistanceActionType.TOW_TRUCK -> 48
+                actionType == AssistanceActionType.REPAIR_TRUCK -> 35
                 else -> 15
             }
 
@@ -105,8 +129,42 @@ class LocationLookupService(
 
     private companion object {
         val UK_POSTCODE_OR_OUTWARD = Regex("\\b[A-Z]{1,2}\\d[A-Z\\d]?(?:\\s*\\d[A-Z]{2})?\\b", RegexOption.IGNORE_CASE)
-        val ROAD_NUMBER = Regex("\\b[ABM]\\d{1,4}\\b", RegexOption.IGNORE_CASE)
-        val NAMED_ROAD = Regex("\\b(road|street|lane|hill|drive|avenue|way|roundabout|car park|lay-by|layby)\\b", RegexOption.IGNORE_CASE)
-        val NUMBERED_JUNCTION_OR_SERVICES = Regex("\\b(junction|jct|services|service area)\\s*\\d*\\b", RegexOption.IGNORE_CASE)
     }
 }
+
+data class LocationEvidence(
+    val previousLocationText: String?,
+    val spokenLocation: String?,
+    val callerConfirmedCandidate: Boolean,
+    val previousResolution: LocationResolution?,
+) {
+    val callerClarifiedAmbiguousLocation: Boolean =
+        !spokenLocation.isNullOrBlank() &&
+            spokenLocation != previousLocationText &&
+            previousResolution?.dispatchable == false &&
+            previousResolution.candidateAddresses.size > 1
+
+    fun toResolutionInput(): LocationResolutionInput {
+        val spoken = spokenLocation?.trim().orEmpty()
+        return LocationResolutionInput(
+            query = if (callerConfirmedCandidate) spoken else clarifiedQuery(spoken),
+            callerConfirmedCandidate = callerConfirmedCandidate,
+            acceptSingleMatchWithoutConfirmation = callerClarifiedAmbiguousLocation,
+        )
+    }
+
+    private fun clarifiedQuery(spoken: String): String {
+        val previous = previousResolution?.rawLocation?.trim().orEmpty()
+        return if (callerClarifiedAmbiguousLocation && previous.isNotBlank()) {
+            "$previous $spoken"
+        } else {
+            spoken
+        }
+    }
+}
+
+data class LocationResolutionInput(
+    val query: String,
+    val callerConfirmedCandidate: Boolean,
+    val acceptSingleMatchWithoutConfirmation: Boolean,
+)

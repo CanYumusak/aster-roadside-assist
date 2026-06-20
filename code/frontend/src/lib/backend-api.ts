@@ -43,14 +43,18 @@ type BackendScenario = {
 };
 
 export type ClaimSession = {
-  id: string;
-  callerPhoneNumber: string;
-  customerId: string | null;
-  scenarioId: string | null;
-  authMode: "KNOWN_NUMBER_SIMULATED" | "FALLBACK_SIMULATED";
-  authRisk: "STANDARD" | "ELEVATED";
-  stage: string;
-  status: string;
+  identity: {
+    id: string;
+    callerPhoneNumber: string;
+    customerId: string | null;
+    scenarioId: string | null;
+  };
+  authentication: {
+    authMode: "KNOWN_NUMBER_SIMULATED" | "FALLBACK_SIMULATED";
+    authRisk: "STANDARD" | "ELEVATED";
+    pinChallengePositions: number[];
+    pinVerificationAttempts: number;
+  };
   intakeFacts: {
     identityConfirmed: boolean;
     vehicleConfirmed: boolean;
@@ -65,41 +69,66 @@ export type ClaimSession = {
     incidentSummary: string | null;
     safetySummary: string | null;
   };
-  missingFacts: string[];
-  blockedActions: string[];
-  locationResolution?: {
-    rawLocation: string;
-    normalizedArea: string;
-    dispatchable: boolean;
-    confidence: number;
-    rationale: string;
-    formattedAddress?: string | null;
-    latitude?: number | null;
-    longitude?: number | null;
-    googleMapsUri?: string | null;
-    placeId?: string | null;
-    candidateAddresses?: string[];
-    source?: string | null;
-    requiresCallerConfirmation?: boolean | null;
-  } | null;
-  stateEvaluation?: {
-    allowedAction: string;
-    question?: string | null;
-    reason: string;
-  } | null;
-  coverageDecision?: {
-    covered: boolean;
-    confidence: number;
-    rationale: string;
-    escalationRequired: boolean;
-  } | null;
-  assistanceAction?: {
-    actionType: string;
-    providerName: string;
-    etaMinutes: number;
-    customerMessage: string;
-  } | null;
-  smsPreview?: string | null;
+  workflow: {
+    status: "CREATED" | "IN_PROGRESS" | "NEEDS_HUMAN_CALLBACK" | "CANCELLED" | "NOT_COVERED" | "COMPLETED";
+    stage: string;
+    missingFacts: string[];
+    blockedActions: string[];
+    stateEvaluation?: {
+      allowedAction: string;
+      question?: string | null;
+      reason: string;
+    } | null;
+  };
+  artifacts: {
+    locationResolution?: {
+      rawLocation: string;
+      normalizedArea: string;
+      dispatchable: boolean;
+      confidence: number;
+      rationale: string;
+      formattedAddress?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+      googleMapsUri?: string | null;
+      placeId?: string | null;
+      candidateAddresses?: string[];
+      source?: string | null;
+      requiresCallerConfirmation?: boolean | null;
+    } | null;
+    providerMatch?: {
+      providerName: string;
+      actionType: string;
+      etaMinutes: number;
+      rationale: string;
+    } | null;
+    coverageDecision?: {
+      covered: boolean;
+      confidence: number;
+      rationale: string;
+      escalationRequired: boolean;
+    } | null;
+    assistanceAction?: {
+      actionType: string;
+      providerName: string;
+      etaMinutes: number;
+      customerMessage: string;
+    } | null;
+    smsPreview?: string | null;
+  };
+  transcript?: Array<{
+    speaker: "agent" | "caller" | string;
+    text: string;
+    createdAt: string;
+  }>;
+  toolCalls?: Array<{
+    toolName: string;
+    callId: string;
+    status: string;
+    argumentsSummary: Record<string, unknown>;
+    resultSummary: Record<string, unknown>;
+    createdAt: string;
+  }>;
 };
 
 export type NextStepResponse = {
@@ -135,6 +164,7 @@ export type AuthVerificationResponse = {
   pinChallengePositions: number[];
   attemptsRemaining: number;
   humanCallbackRequired: boolean;
+  cancellationRequired: boolean;
   vehicleOptions: string[];
   nextStep: NextStepResponse;
 };
@@ -169,11 +199,35 @@ export async function createBackendClaim(input: {
   return postJson<ClaimSession>("/api/claims", input);
 }
 
+export async function getBackendClaim(claimId: string): Promise<ClaimSession> {
+  return getJson<ClaimSession>(`/api/claims/${claimId}`);
+}
+
 export async function updateBackendFacts(
   claimId: string,
   input: Record<string, unknown>,
 ): Promise<ClaimSession> {
   return postJson<ClaimSession>(`/api/claims/${claimId}/facts`, input);
+}
+
+export async function appendBackendTranscript(
+  claimId: string,
+  input: { speaker: "agent" | "caller"; text: string },
+): Promise<ClaimSession> {
+  return postJson<ClaimSession>(`/api/claims/${claimId}/transcript`, input);
+}
+
+export async function appendBackendToolCall(
+  claimId: string,
+  input: {
+    toolName: string;
+    callId: string;
+    status?: string;
+    argumentsSummary?: Record<string, unknown>;
+    resultSummary?: Record<string, unknown>;
+  },
+): Promise<ClaimSession> {
+  return postJson<ClaimSession>(`/api/claims/${claimId}/tool-calls`, input);
 }
 
 export async function verifyKnownPin(
@@ -208,6 +262,13 @@ export async function humanCallbackBackendClaim(
   return postJson<ClaimSession>(`/api/claims/${claimId}/human-callback`, { reason });
 }
 
+export async function cancelBackendClaim(
+  claimId: string,
+  reason: string,
+): Promise<ClaimSession> {
+  return postJson<ClaimSession>(`/api/claims/${claimId}/cancel`, { reason });
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${BACKEND_BASE}${path}`);
   if (!response.ok) throw new Error(`Backend GET ${path} failed: ${response.status}`);
@@ -230,7 +291,7 @@ function mapCustomer(
   scenarios: Scenario[],
   index: number,
 ): Customer {
-  const vehicles = customer.vehicles.map(mapVehicle);
+  const vehicles = customer.vehicles.map((vehicle) => mapVehicle(vehicle, policies));
   const primaryPolicy = policies.find((policy) => policy.id === customer.vehicles[0]?.policyId);
   const tier = mapTier(primaryPolicy?.coverageTier);
   const suggestedScenarioId = suggestScenarioId(customer, tier, scenarios, index);
@@ -254,10 +315,12 @@ function mapCustomer(
   };
 }
 
-function mapVehicle(vehicle: BackendVehicle): Vehicle {
+function mapVehicle(vehicle: BackendVehicle, policies: BackendPolicy[]): Vehicle {
+  const policy = policies.find((candidate) => candidate.id === vehicle.policyId);
   return {
     id: vehicle.id,
     policyId: vehicle.policyId,
+    policyName: policy?.name,
     reg: vehicle.registration,
     make: vehicle.make,
     model: vehicle.model,
@@ -268,7 +331,12 @@ function mapVehicle(vehicle: BackendVehicle): Vehicle {
 
 function mapScenario(scenario: BackendScenario): Scenario {
   const outcome = scenario.expectedOutcome.toLowerCase();
+  const safetyExit =
+    outcome.includes("safety_escalation") ||
+    scenario.issueType.includes("injury") ||
+    scenario.issueType.includes("accident_with_injury");
   const human = outcome.includes("human");
+  const notCovered = outcome.includes("not_covered") || outcome.includes("not covered");
   const tow = outcome.includes("tow");
   const repair = outcome.includes("repair");
 
@@ -278,11 +346,21 @@ function mapScenario(scenario: BackendScenario): Scenario {
     incidentPhrase: scenario.callerPrompt,
     safetyPhrase: scenario.safetyPrompt,
     locationPhrase: scenario.locationPrompt,
-    action: human ? "Human review" : tow ? "Tow truck" : repair ? "Repair truck" : "Taxi / rental",
-    provider: human ? "Aster Specialist Team" : tow ? "Aster Recovery Network" : "Aster Mobile Technician",
-    etaMinutes: human ? 15 : tow ? 48 : 35,
-    coverage: human ? "Human review required" : outcome.includes("taxi") ? "Covered with excess" : "Covered",
-    customerExplanation: human
+    action: safetyExit ? "Security exit" : human ? "Human review" : tow ? "Tow truck" : repair ? "Repair truck" : "Taxi / rental",
+    provider: safetyExit ? "No dispatch" : human ? "Aster Specialist Team" : tow ? "Aster Recovery Network" : "Aster Mobile Technician",
+    etaMinutes: safetyExit ? 0 : human ? 15 : tow ? 48 : 35,
+    coverage: safetyExit
+      ? "Security exit"
+      : notCovered
+      ? "Not covered"
+      : human
+        ? "Human review required"
+        : outcome.includes("taxi")
+          ? "Covered with excess"
+          : "Covered",
+    customerExplanation: safetyExit
+      ? "If anyone may be injured or in immediate danger, call emergency services now. Move to a safe place if you can. We cannot continue roadside intake until everyone is safe."
+      : human
       ? "A roadside specialist will call back as soon as one is available."
       : "Aster Roadside has assessed the case and selected the next best assistance step.",
     severity:

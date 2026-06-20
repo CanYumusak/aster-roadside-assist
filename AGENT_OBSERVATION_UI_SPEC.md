@@ -2,143 +2,160 @@
 
 ## Purpose
 
-The agent observation UI is the internal surface for human agents, QA reviewers, and interviewers to watch AI-handled roadside cases and understand their outcomes. It is not customer-facing and does not replace the phone-call experience. Its job is to make the voice agent auditable: what the caller said, what the AI extracted, what the backend validated, what was blocked, and why the final outcome was completed, not covered, or routed to human callback.
+The observation UI is the internal console for human roadside agents, QA reviewers, and demo evaluators. The customer still experiences a phone call; this UI shows the other side of the system: what the AI heard, what it extracted, what the backend validated, what decisions were blocked, and why the case ended in dispatch, not covered, or human callback.
+
+This is the trust layer. It should make clear that the voice model is not acting alone: backend state, policy rules, validation gates, and audit logs are visible to humans.
 
 ## Product Goals
 
-- Give a human reviewer a live view of every active roadside case.
-- Make the backend state machine visible without exposing raw system prompts or hidden model instructions.
-- Show whether the AI is following the required flow: safety, auth, vehicle, location, incident, coverage, next best action, SMS.
-- Explain final outcomes clearly enough for a human agent to take over or review after the call.
-- Preserve trust by separating observed facts, AI interpretations, backend decisions, and customer-facing messages.
+- Let a human agent monitor active AI-handled roadside cases.
+- Make every terminal outcome explainable without reading raw model output.
+- Support human callback workflows when the AI cannot safely or confidently complete the case.
+- Give QA and operations a replayable record of transcript, extracted facts, tool calls, validation, policy reasoning, and customer notification.
+- Prove to the insurer that AI automation can reduce handle time while preserving control, reviewability, and customer safety.
 
 ## Primary Users
 
-- Human roadside agent: monitors live sessions and handles callback/escalation cases.
-- QA / operations lead: reviews completed cases, override reasons, model/tool behavior, and process quality.
-- Interviewer / demo evaluator: sees that the prototype is not just a voice bot; it has observability, control boundaries, and auditability.
+- **Roadside agent:** watches cases routed to callback and needs a concise handoff summary before calling the customer.
+- **Operations lead:** reviews containment rate, escalation reasons, failed auth, unclear location, and model/tool behavior.
+- **QA reviewer:** audits completed and escalated cases for correctness, tone, policy compliance, and missed safety issues.
+- **Demo evaluator:** sees that the prototype has observability and backend guardrails, not just a voice interface.
 
-## Scope
+## MVP Scope
 
-### Prototype Scope
+Build a read-only observation console with:
 
-- Read-only live case observation.
-- Case list with status, stage, risk flag, caller type, and outcome.
-- Case detail view with transcript, structured facts, validation gates, tool calls, coverage trace, next best action, and final SMS.
-- Live updates while the call is in progress.
-- Clear terminal states: `completed`, `needs_human_callback`, `not_covered`, `abandoned`.
+- Case board for active and recently completed calls.
+- Case detail view for one selected case.
+- Live or near-live updates from backend state.
+- Transcript with caller and agent turns.
+- Extracted facts with source and confirmation state.
+- Authentication method and result.
+- Validation checklist and blocked actions.
+- Coverage decision trace.
+- Next best action and fake SMS preview.
+- Human callback reason and suggested callback summary.
+- Explicit no-SMS outcome for unsafe safety-stop cases.
 
-### Later Scope
+Out of scope for the first demo:
 
 - Human takeover / barge-in.
-- Agent assignment and callback queue workflow.
-- Case notes and disposition codes.
-- Supervisor review, approvals, and overrides.
-- Search across historical cases and transcript replay.
-- QA scoring and model regression review.
+- Manual edits to claim facts.
+- Dispatch approval workflows.
+- Agent assignment queues.
+- Historical search across all cases.
+- QA scoring forms.
 
 ## UX Principles
 
-- Operational, not decorative: dense, quiet, scannable, and fast.
-- The human should immediately see "what needs attention" and "why."
-- Never make the reviewer infer state from a raw transcript alone.
-- Every AI conclusion should be paired with the supporting backend field or policy rule.
-- Use risk flags sparingly and consistently: unknown number, auth retry, unsafe caller, ambiguous location, unsupported incident, not policyholder, low coverage confidence.
-- Keep customer PII visible only where it helps the human do the job; do not show PINs or hidden verification answers.
+- Operational, dense, and calm. This should feel like an internal insurance console, not a marketing dashboard.
+- Surface attention items first: unsafe caller, auth failed, unknown number full verification, unclear location, unclassified incident, not policyholder, coverage blocked, human callback.
+- Do not force the reviewer to infer system state from transcript alone.
+- Separate four concepts visually: caller said, AI extracted, backend validated, policy decided.
+- Do not expose system prompts, full PINs, OpenAI keys, hidden verification answers, or irrelevant PII.
+- Use "auth method" and "attention flags" language, not generic risk labels.
 
 ## Information Architecture
 
-### Case Board
+### 1. Case Board
 
-Columns:
+The board is the agent's queue. It should answer: which cases are active, which need a human, and which completed cleanly?
+
+Recommended columns:
 
 - Case ref.
-- Current stage.
-- Status / outcome.
-- Auth mode and risk.
+- Status: active, completed, human callback, not covered, abandoned, failed.
+- Current stage: lookup, safety, auth, vehicle, location, incident, coverage, action, SMS.
+- Auth method: phone match + PIN, full verification, not policyholder, unverified.
 - Caller phone.
 - Policyholder name after verification.
 - Vehicle.
-- Incident.
-- Location confidence.
+- Location label and confidence.
+- Incident type.
 - Next action.
+- Attention flags.
 - Last update time.
 
-Filters:
+Recommended filters:
 
 - Active calls.
-- Needs human callback.
+- Human callback.
 - Completed.
-- Not covered.
-- Elevated risk.
-- Unknown-number verification.
+- Auth failed.
+- Unknown number / full verification.
+- Unsafe caller.
 - Location unresolved.
+- Incident unclear.
 - Coverage blocked.
 
-Sort defaults:
+Default ordering:
 
 - Active calls first.
-- Human callback / elevated risk before ordinary completed cases.
-- Newest activity first.
+- Human callback and attention flags before routine completed cases.
+- Newest update first.
 
-### Case Detail
+### 2. Case Detail
+
+The detail page is the audit and handoff view.
 
 Recommended layout:
 
-- Header: case ref, live status, elapsed time, outcome, risk chips.
-- Left rail: timeline of state transitions and tool calls.
-- Main panel: transcript with speaker labels and timestamps.
-- Right panel: extracted facts, validation gates, coverage trace, next best action, final SMS.
+- Header: case ref, status, elapsed time, current stage, final outcome, attention flags.
+- Left column: timeline of state transitions and backend/tool events.
+- Center: transcript with speaker labels and timestamps.
+- Right column: extracted facts, validation gates, coverage trace, next best action, SMS preview.
 
-Important: this UI is for observation. In the prototype it should not mutate the call state.
+The prototype view is read-only. Humans can observe and understand; they cannot mutate call state yet.
 
-## Required Case Detail Sections
+## Required Detail Sections
 
-### 1. Live Call State
+### Live Case State
 
 Show:
 
-- Call state: `ready`, `ringing`, `listening`, `speaking`, `thinking`, `completed`, `escalated`, `failed`.
-- Current backend stage: lookup, verify, safety, vehicle, location, incident, coverage, action, SMS.
-- Last backend event timestamp.
-- Whether the voice session is connected.
+- Voice state: ringing, listening, speaking, thinking, completed, escalated, failed.
+- Backend stage.
+- Last event timestamp.
+- Whether Realtime voice is connected.
+- Whether the final customer update was generated, or intentionally skipped for a safety stop.
 
-### 2. Transcript
+### Transcript
 
 Show:
 
 - Caller utterances.
 - Agent utterances.
-- Timestamps.
-- Optional confidence / partial vs final transcript markers later.
+- Timestamp per final turn.
+- Optional partial transcript markers later.
 
 Do not show:
 
 - System prompts.
-- Raw hidden instructions.
-- Secret fields such as all PIN digits.
+- Tool schemas unless in developer/debug mode.
+- Full PIN or hidden verification data.
 
-### 3. Auth And Risk
+### Authentication
 
 Show:
 
-- Known-number vs unknown-number path.
-- PIN digit challenge status, without exposing unasked digits.
-- Retry count.
-- Unknown-number elevated-risk flag.
+- Auth method: phone match + requested PIN digits, full verification, not policyholder, unverified.
+- Requested PIN positions only, not the full PIN.
+- Attempt count.
+- Verification result.
 - Human callback requirement after failed verification.
-- Not-policyholder flag when applicable.
 
-### 4. Extracted Facts
+For unknown numbers, label the flow as "full verification." Attention flags can still show specific reasons such as `unknown number`, `auth retry`, or `auth failed`.
 
-Show structured claim slots:
+### Extracted Facts
 
-- Policyholder / caller identity.
+Show each claim slot:
+
+- Caller / policyholder identity.
 - Caller relationship to policyholder.
 - Vehicle selected.
-- Location raw text.
-- Location resolved address.
-- Location confidence and Google Maps link when available.
+- Raw spoken location.
+- Resolved address.
+- Location confidence and maps link when available.
 - Incident summary.
 - Canonical incident type.
 - Safety summary.
@@ -146,118 +163,123 @@ Show structured claim slots:
 Each fact should include:
 
 - Value.
-- Source turn or tool.
-- Confidence where available.
+- Source event or transcript turn.
 - Confirmed / unconfirmed state.
-- Last updated timestamp.
+- Confidence where applicable.
+- Last updated time.
 
-### 5. Validation Gates
+### Validation Gates
 
-Show the backend gates as explicit checklist rows:
+Display backend-owned gates as checklist rows:
 
-- Identity verified.
 - Safety checked.
+- Identity verified or human callback selected.
 - Vehicle confirmed.
 - Location dispatchable and confirmed.
 - Incident classified.
 - Coverage review allowed.
 - Dispatch simulation allowed.
-
-Blocked actions should be visible with reasons, for example:
-
-- `coverage_decision` blocked because incident is unclear.
-- `dispatch_simulation` blocked because location is ambiguous.
-- `automated_resolution` blocked because caller is not policyholder.
-
-### 6. Tool And State Timeline
-
-Show major backend/tool events:
-
-- Claim created.
-- Customer lookup result.
-- PIN verification result.
-- Fact updated.
-- Location lookup result.
-- Incident classification result.
-- Coverage decision result.
-- Provider match result.
 - SMS generated.
-- Human callback finalized.
+
+Blocked actions should include a reason:
+
+- Coverage blocked because incident is unclear.
+- Dispatch blocked because location is ambiguous.
+- Automated resolution blocked because caller is not the policyholder.
+- Case ended because caller was not safely away from traffic.
+
+### Tool And State Timeline
+
+Show major events:
+
+- Case created.
+- Customer lookup completed.
+- PIN / identity verification completed.
+- Fact updated.
+- Location lookup completed.
+- Incident classified.
+- Coverage decided.
+- Provider selected.
+- SMS generated.
+- Case finalized.
 
 Each event should show:
 
 - Event type.
 - Timestamp.
 - Status: success, retry, blocked, escalated, error.
-- Short reason.
+- Short human-readable reason.
 - Redacted payload preview.
 
-### 7. Coverage Trace
+### Coverage Trace
 
 Show:
 
 - Policy product used.
 - Covered event match.
 - Exclusions checked.
-- Confidence.
-- Escalation rules triggered.
-- Decision rationale.
+- Assistance benefits used.
+- Confidence / uncertainty.
+- Human escalation rule if triggered.
+- Plain-English rationale.
 
-The UI should distinguish:
+Visually distinguish:
 
 - Deterministic policy rule.
-- AI-generated explanation.
-- Human override later.
+- AI classification or summarization.
+- Future human override.
 
-### 8. Next Best Action
+### Next Best Action
 
 Show:
 
-- Recommended action: repair truck, tow truck, taxi, rental, human callback.
-- Provider / garage selected.
+- Recommended action: repair truck, tow truck, taxi, rental, human callback, no automated action.
+- Provider or garage selected.
 - ETA.
 - Reason for selection.
-- Alternatives considered later.
 - Customer-facing SMS text.
+- No-SMS safety-stop state when the caller is not safely away from traffic.
 
 For human callback, show:
 
 - Callback reason.
-- Suggested human-agent opening summary.
+- Suggested opening line for the human agent.
+- Known facts already collected.
+- Missing facts the human should ask for.
 - Safety warning if present.
 
 ## Live Update Transport
 
-WebSockets are appropriate for this UI because operators need live transcript, state transitions, and terminal outcomes without refreshing. Use a REST snapshot plus WebSocket event stream:
+Use a REST snapshot plus WebSocket events.
 
 ```text
 GET /api/claims
   Returns case summaries for the board.
 
 GET /api/claims/{claimId}
-  Returns the current complete case snapshot.
+  Returns a complete case snapshot.
 
 WS /ws/cases
-  Streams case-level events for board updates.
+  Streams board-level case summary updates.
 
 WS /ws/cases/{claimId}
-  Streams transcript, facts, tool calls, validation, and outcome events for one case.
+  Streams transcript, fact, validation, tool, coverage, SMS, and outcome events for one case.
 ```
 
-Why not WebSocket-only:
+Why this shape:
 
-- The UI must recover after refresh, reconnect, or missed events.
-- Case detail should load from an authoritative snapshot first.
-- WebSocket events should update the snapshot, not become the source of truth.
+- REST snapshots make refresh and reconnect reliable.
+- WebSockets keep the board and detail view live without polling.
+- Backend remains the source of truth; events update the snapshot, not replace it.
 
-Fallback for prototype:
+Prototype fallback:
 
-- If WebSocket setup costs too much time, poll `GET /api/claims/{claimId}` every 1 to 2 seconds for the demo.
-- Keep the event data model the same so polling can be replaced by WebSockets later.
+- Poll `GET /api/claims` and `GET /api/claims/{claimId}` every 1 to 2 seconds if WebSockets cost too much time.
+- Keep the same event envelope so polling can be replaced by WebSockets later.
 
 ## Event Model
 
-All events should share a stable envelope:
+All events should use a stable envelope:
 
 ```json
 {
@@ -295,8 +317,6 @@ Ordering:
 
 ## Data Contract
 
-### Case Summary
-
 ```text
 CaseSummary
   caseRef
@@ -304,8 +324,8 @@ CaseSummary
   stage
   callerPhone
   policyholderName?
-  authMode
-  authRisk
+  authMethod
+  attentionFlags[]
   vehicleLabel?
   incidentType?
   locationLabel?
@@ -316,21 +336,17 @@ CaseSummary
   updatedAt
 ```
 
-### Case Snapshot
-
 ```text
 CaseSnapshot
   summary
   transcript[]
-  facts
-  validation
+  facts[]
+  validation[]
   timeline[]
   coverageDecision?
   assistanceAction?
   smsPreview?
 ```
-
-### Transcript Entry
 
 ```text
 TranscriptEntry
@@ -342,13 +358,12 @@ TranscriptEntry
   endedAt?
 ```
 
-### Observed Fact
-
 ```text
 ObservedFact
   key
   value
   sourceEventId?
+  sourceTranscriptEntryId?
   confidence?
   confirmed
   updatedAt
@@ -356,31 +371,30 @@ ObservedFact
 
 ## Security And Privacy
 
-- Observation UI is internal only.
-- Do not expose raw OpenAI keys, prompts, all PIN digits, or hidden system instructions.
-- Redact verification payloads. Show requested PIN positions and pass/fail only.
-- Show policyholder data only after the backend says auth passed, except for known-number internal lookup labels required by the demo.
-- Record all observer actions later, especially if humans can override or take over.
-- In production, protect the WebSocket with the same auth/session model as the internal operator portal.
+- Internal-only UI behind insurer operator authentication.
+- No OpenAI keys, prompts, full PINs, hidden system instructions, or raw secret payloads.
+- Redact verification payloads; show requested PIN positions and pass/fail only.
+- Gate policyholder PII behind successful backend auth wherever possible.
+- Log all future human actions: view, override, assignment, callback, dispatch approval.
+- Use least-privilege roles for agents, supervisors, QA reviewers, and demo users.
+- Production storage should support replay, retention policy, deletion policy, and regulatory audit.
 
 ## Prototype Implementation Plan
 
-1. Extend backend claim state with an append-only event list in memory.
-2. Emit events whenever claim state changes: create, auth, facts, validation, coverage, SMS, finalization.
+1. Add an append-only in-memory case event list to the backend.
+2. Emit events for claim creation, auth, fact updates, validation, location lookup, incident classification, coverage, SMS, and finalization.
 3. Add `GET /api/claims` for board summaries.
-4. Add `GET /api/claims/{claimId}` or reuse the current claim endpoint for full snapshots.
-5. Add WebSocket stream after snapshots work.
-6. Build a route such as `/observe` with case board and case detail.
-7. Keep the existing slide-over operator panel as a lightweight per-case preview until `/observe` exists.
+4. Add `GET /api/claims/{claimId}` for full snapshots.
+5. Build `/observe` with board and detail panes.
+6. Add WebSocket streams after REST snapshots work.
+7. Keep the existing right-side presenter guide separate; it is a demo aid, not the human-agent observation product.
 
-## Milestone Fit
+## Demo Success Criteria
 
-For the interview demo, the minimum useful version is:
-
-- A read-only case board.
-- One selected case detail.
-- Live or near-live stage/status/fact updates.
-- Final outcome and SMS.
-- Clear escalation reason when the case routes to human callback.
-
-This is enough to pitch trust, operations readiness, and human-agent experience without building a full contact-center console.
+- Interviewer can run a voice call and watch the observation UI update.
+- A human can immediately tell whether the case completed or needs callback.
+- The reason for callback is clear without reading hidden prompts.
+- Extracted facts match what the caller said.
+- Coverage and next best action are visibly backend-owned.
+- The final SMS shown to the customer matches the case outcome.
+- Unsafe safety-stop cases clearly show that no SMS was sent.

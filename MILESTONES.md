@@ -61,7 +61,7 @@ Goal: show how a human agent or QA lead can trust and evaluate the AI flow.
 
 - Add operator view for transcript, claim slots, and missing facts.
 - Show simulated auth status, including known-number PIN digit verification and unknown-number name, birthdate, and PIN digit verification.
-- Flag unknown-number sessions as elevated risk in the operator view.
+- Show unknown-number sessions as full-verification auth in the operator view, with specific attention flags only when needed.
 - Show intake completeness and blocked actions.
 - Show coverage decision trace and escalation flags.
 - Show human callback status and reason when the terminal outcome is `needs_human_callback`.
@@ -101,6 +101,8 @@ Goal: turn demo assumptions into a real insurer implementation plan.
 - Define phone-number matching behavior, including duplicate customers, household policies, company vehicles, withheld numbers, and unknown callers.
 - Confirm whether the insurer already has a customer phone PIN.
 - Decide whether authentication should use existing PIN, new roadside PIN, phone-call knowledge checks, or human-agent verification.
+- Define the branded voice experience: tone, pace, escalation wording, safety language, empathy level, and approved phrase library. The prototype currently relies on prompt instructions, so phrasing can vary; production should use insurer-approved conversation patterns and regression tests for critical moments.
+- Tighten conversational phrasing so the agent does not duplicate acknowledgements or repeat information unnecessarily, for example saying "thanks" twice, restating the same next step, or re-reading facts the caller already confirmed. Add transcript QA checks for repetition, over-talking, and redundant summaries.
 - Define the AI data-minimization boundary: the voice prompt must not receive full customer, vehicle, policy, or PIN data; it should fetch only the next permitted field through backend tools after auth gates pass.
 - Agree vehicle selection behavior for one vehicle, multiple vehicles, unknown vehicles, and borrowed vehicles.
 - Define third-party caller handling for spouse, named driver, passenger, parent, fleet manager, police, highways officer, and passerby.
@@ -141,6 +143,7 @@ Target: 2 to 4 weeks after core integrations.
 
 Goal: connect the decision engine to real operational workflows.
 
+- Integrate the voice agent with a real phone line / telephony provider. Decide whether to use the insurer's existing contact-center stack or a provider such as Twilio, SIP trunking, or a CCaaS platform; support inbound call routing, caller ID lookup, audio streaming to the realtime voice layer, call recording consent, transfer to human agents, dropped-call recovery, and fallback routing if the AI service is unavailable.
 - Integrate with provider / garage / dispatch systems.
 - Revisit dispatch-location resolution beyond Google Maps text lookup. The prototype can resolve many addresses, postcodes, and landmarks, but highway segment descriptions such as "A8 kilometer 400 between Munich and Berlin" may require road-network, marker-post, telematics, emergency-services, or specialist dispatch-location data instead of generic place search.
 - Add real SMS integration for customer updates.
@@ -164,6 +167,7 @@ Goal: run with limited traffic and strong human oversight.
 - Monitor containment rate, escalation accuracy, average handle time, customer satisfaction, and override reasons.
 - Build durable audit storage: serialize every case, transcript, tool call, state transition, policy evidence snapshot, coverage decision, notification, and human override into append-only object storage such as S3, with queryable case metadata in a NoSQL / document store for review and replay.
 - Build an evaluation set from real reviewed cases.
+- Add voice UX QA to the evaluation set: measure whether the agent uses the approved tone, says required safety and callback wording exactly, avoids over-talking, and stays consistent across repeated calls.
 - Version prompts, schemas, policy rules, and provider-ranking logic.
 
 Exit criteria:
