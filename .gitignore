@@ -2,6 +2,7 @@
 logs
 *.log
 .playwright-cli/
+plans/
 *.zip
 *.pdf
 1nsed

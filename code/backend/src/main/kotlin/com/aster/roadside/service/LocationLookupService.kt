@@ -69,7 +69,10 @@ class LocationLookupService(
             when {
                 value.contains("m4", ignoreCase = true) || value.contains("reading", ignoreCase = true) -> "M4 / Reading"
                 value.contains("a34", ignoreCase = true) || value.contains("oxford", ignoreCase = true) -> "A34 / Oxford"
-                value.contains("bristol", ignoreCase = true) || value.contains("bs8", ignoreCase = true) -> "Bristol"
+                value.contains("bristol", ignoreCase = true) ||
+                    value.contains("cabot circus", ignoreCase = true) ||
+                    value.contains("newfoundland street", ignoreCase = true) ||
+                    value.contains("bs8", ignoreCase = true) -> "Bristol"
                 value.contains("leeds", ignoreCase = true) || value.contains("ls1", ignoreCase = true) -> "Leeds"
                 value.contains("clapham", ignoreCase = true) || value.contains("sw11", ignoreCase = true) -> "South West London"
                 value.contains("beaconsfield", ignoreCase = true) || value.contains("hp9", ignoreCase = true) -> "Beaconsfield"

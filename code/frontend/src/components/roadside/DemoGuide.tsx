@@ -109,8 +109,8 @@ export function DemoGuide({
             </div>
           </div>
 
-          <ScriptLine label="Incident" text={scenario.incidentPhrase} stage="Incident" active={currentStage === "Incident"} />
           <ScriptLine label="Location" text={scenario.locationPhrase} stage="Location" active={currentStage === "Location"} />
+          <ScriptLine label="Incident" text={scenario.incidentPhrase} stage="Incident" active={currentStage === "Incident"} />
         </div>
       </div>
     </aside>

@@ -6,9 +6,9 @@ These tests simulate the backend contract used by the Realtime voice tools: crea
 
 | # | Scenario | Caller setup | Simulated caller facts | Expected result |
 |---|---|---|---|---|
-| 1 | Covered flat tyre | Maya Thompson, known phone, correct PIN digits `8` and `2` | Toyota Yaris, Beaconsfield Services, puncture/front tyre flat | `COMPLETED`; repair truck action; simulated SMS generated |
-| 2 | Basic policy not covered | James Okafor, known phone, correct PIN digits `1` and `2` | VW Golf, Reading Services M4, engine cut out/no power | `NOT_COVERED`; no dispatch action; not-covered SMS generated |
-| 3 | EV warning human review | Sofia Martins, known phone, correct PIN digits `4` and `6` | Hyundai Kona Electric, Cabot Circus, red battery warning/reduced power | `NEEDS_HUMAN_CALLBACK`; specialist callback SMS generated |
+| 1 | Covered flat tyre | Maya Thompson, known phone, correct PIN digits `8` and `2` | Toyota Yaris, Beaconsfield Services car park off the M40, puncture/front tyre flat | `COMPLETED`; repair truck action; simulated SMS generated |
+| 2 | Basic policy not covered | James Okafor, known phone, correct PIN digits `1` and `2` | VW Golf, M4 westbound at Reading Services near the exit, engine cut out/no power | `NOT_COVERED`; no dispatch action; not-covered SMS generated |
+| 3 | EV warning human review | Sofia Martins, known phone, correct PIN digits `4` and `6` | Hyundai Kona Electric, Cabot Circus car park near the Newfoundland Street entrance, red battery warning/reduced power | `NEEDS_HUMAN_CALLBACK`; specialist callback SMS generated |
 | 4 | Known caller wrong PIN | Maya Thompson, known phone, three wrong PIN attempts | No intake beyond auth | Attempts 1-2 return `retry_pin`; attempt 3 returns `cancellationRequired=true`; claim is `CANCELLED`; no SMS |
 | 5 | Unknown number verified | Unknown phone, Alex Carter, DOB `1988-02-19`, PIN digits `5` and `2` | Vauxhall Astra, Plough Lane Stadium, flat tyre | `COMPLETED`; customer resolved to `cust-011`; simulated SMS generated |
 | 6 | Unknown number failed verification | Unknown phone, wrong name/DOB/PIN repeated three times | No intake beyond auth | Claim is `CANCELLED`; no SMS |

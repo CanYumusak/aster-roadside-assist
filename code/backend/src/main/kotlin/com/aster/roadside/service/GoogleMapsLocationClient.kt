@@ -6,12 +6,12 @@ import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
 
 @Service
-class GoogleMapsLocationClient(
+open class GoogleMapsLocationClient(
     private val environment: Environment,
 ) {
     private val restClient = RestClient.create()
 
-    fun resolve(rawLocation: String): GoogleLocationResult? {
+    open fun resolve(rawLocation: String): GoogleLocationResult? {
         val value = rawLocation.trim()
         if (value.isBlank() || containsNonUkHint(value)) return null
 
