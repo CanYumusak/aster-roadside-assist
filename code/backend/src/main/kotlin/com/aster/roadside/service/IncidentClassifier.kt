@@ -10,7 +10,7 @@ import org.springframework.core.env.Environment
 import org.springframework.stereotype.Service
 
 @Service
-class IncidentClassifier(
+open class IncidentClassifier(
     private val environment: Environment,
 ) {
     private val model =
@@ -28,7 +28,7 @@ class IncidentClassifier(
             ?.takeIf { it.isNotBlank() }
             ?.let { OpenAIOkHttpClient.builder().apiKey(it).build() }
 
-    fun classify(summary: String): String? {
+    open fun classify(summary: String): String? {
         if (summary.isBlank()) return null
         val openAiClient = client
         if (openAiClient == null) {
