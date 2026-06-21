@@ -1,7 +1,8 @@
 import type { Customer, Scenario, Vehicle } from "@/lib/roadside-data";
 
 const BACKEND_BASE =
-  import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") ?? "";
+  import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") ??
+  (import.meta.env.DEV ? "http://127.0.0.1:8081" : "");
 
 type BackendVehicle = {
   id: string;
