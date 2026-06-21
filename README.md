@@ -48,6 +48,7 @@ Unknown-number fallback demo:
 
 ## Docs
 
+- [PRD](PRD.md)
 - [Architecture](ARCHITECTURE.md)
 - [Client Spec](CLIENT_SPEC.md)
 - [Milestones](MILESTONES.md)
