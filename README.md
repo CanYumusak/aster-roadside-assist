@@ -38,13 +38,9 @@ Open the caller simulator at the frontend URL printed by Vite, and open the huma
 observation console at the observer URL printed by Vite. The backend accepts local
 browser origins on any localhost port so the apps can move if a port is already in use.
 
-## Demo Credentials
+## Demo Loom
 
-Unknown-number fallback demo:
-
-- Name: Alex Carter
-- Birthdate: 1988-02-19
-- PIN challenge: digits 1 and 4 are `5` and `2`
+A demo of the product is available on [loom](https://www.loom.com/share/9cf19a8026aa4de7b06cbfaa306837ee)
 
 ## Docs
 
